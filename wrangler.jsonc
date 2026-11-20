@@ -15,6 +15,7 @@
       "migrations_dir": "migrations"
     }
   ],
-  "vars": { "CLAUDE_MODEL": "claude-opus-5-5" }
-  // Secrets (never in this file): ANTHROPIC_API_KEY, APP_PASSWORD, SESSION_SECRET.
+  // LLM_PROVIDER: "openai" (default) or "claude".
+  "vars": { "LLM_PROVIDER": "openai", "OPENAI_MODEL": "gpt-5.5", "CLAUDE_MODEL": "claude-opus-5-5" }
+  // Secrets (never in this file): OPENAI_API_KEY or ANTHROPIC_API_KEY, APP_PASSWORD, SESSION_SECRET.
 }

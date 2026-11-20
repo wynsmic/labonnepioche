@@ -1,6 +1,6 @@
 # Affaires
 
-Trouve les bonnes affaires sur Leboncoin avec Claude.
+Trouve les bonnes affaires sur Leboncoin avec une IA (GPT par défaut, ou Claude).
 
 1. **Préparer** : tu décris ce que tu cherches. Claude se renseigne sur le web (modèles fiables, prix de marché,
    pièges), puis propose plusieurs recherches Leboncoin complémentaires (gammes de prix, kilométrages, mots-clés).
@@ -35,14 +35,14 @@ résultats (`/recherche`), jamais tes messages ou tes favoris.
 
 ## Déployer sur Cloudflare (gratuit)
 
-Prérequis : un compte Cloudflare et une clé API Anthropic (console.anthropic.com).
+Prérequis : un compte Cloudflare et une clé API OpenAI (platform.openai.com) ou Anthropic.
 
 ```bash
 npm install
 npx wrangler login
 npx wrangler d1 create affaires        # copie le database_id affiché dans wrangler.jsonc
 npm run db:migrate:remote
-npx wrangler secret put ANTHROPIC_API_KEY
+npx wrangler secret put OPENAI_API_KEY   # ou ANTHROPIC_API_KEY avec LLM_PROVIDER=claude
 npx wrangler secret put APP_PASSWORD   # le mot de passe de connexion à l'outil
 npx wrangler secret put SESSION_SECRET # 32 caractères aléatoires ou plus : openssl rand -hex 32
 npm run deploy
@@ -56,18 +56,17 @@ déconnecte toutes les sessions.
 Le plan gratuit des Workers limite le temps de calcul par requête. Si des erreurs 503 apparaissent pendant
 l'analyse, passe au plan Workers Paid (5 $/mois).
 
-## Coût Claude
+## Modèle et coût
 
-Modèle par défaut : `claude-opus-5-5` (variable `CLAUDE_MODEL` dans `wrangler.jsonc`). Ordre de grandeur :
-quelques dizaines de centimes pour préparer une recherche (avec recherche web), et environ 1 centime par
-annonce analysée. Les annonces déjà analysées ne le sont pas une seconde fois.
-
-Si Claude décline une demande, l'API la relance automatiquement sur un modèle de repli (`fallbacks: "default"`).
+`LLM_PROVIDER` dans `wrangler.jsonc` : `openai` (par défaut, modèle `OPENAI_MODEL` = `gpt-5.5`) ou `claude`
+(`CLAUDE_MODEL` = `claude-opus-5-5`). Ordre de grandeur : quelques dizaines de centimes pour préparer une
+recherche (avec recherche web), et environ 1 centime par annonce analysée. Une annonce n'est analysée qu'une
+fois, sauf si son prix ou son texte change.
 
 ## Développement local
 
 ```bash
-cp .dev.vars.example .dev.vars   # MOCK_CLAUDE=1 : réponses d'exemple, sans clé API
+cp .dev.vars.example .dev.vars   # MOCK_AI=1 : réponses d'exemple, sans clé API
 npm run db:migrate:local
 npm run dev
 npm test
@@ -75,7 +74,8 @@ npm test
 
 ## Structure
 
-- `src/worker/` : API (Hono sur Cloudflare Workers), base D1, appels à Claude (`claude.ts`).
+- `src/worker/` : API (Hono sur Cloudflare Workers), base D1, consignes données à l'IA (`ai.ts`) et
+  fournisseurs (`llm-openai.ts`, `llm-claude.ts`).
 - `src/client/` : application React (liste, carte Leaflet / OpenStreetMap).
 - `src/shared/` : types partagés et construction des URL de recherche Leboncoin.
 - `extension/` : extension Chrome (lecture des pages de résultats Leboncoin).

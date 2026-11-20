@@ -93,7 +93,7 @@ export function App() {
           Nouvelle recherche
         </button>
         <span className="spacer" />
-        {session.mock && <span className="pill warn">Mode démo (sans Claude)</span>}
+        {session.mock && <span className="pill warn">Mode démo (réponses d’exemple)</span>}
         <span className="muted small">{session.model}</span>
         <button
           type="button"

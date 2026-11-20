@@ -30,7 +30,7 @@ export interface BriefDetail {
 }
 
 export const api = {
-  me: () => call<{ ok: true; mock: boolean; model: string }>('GET', '/me'),
+  me: () => call<{ ok: true; mock: boolean; provider: string; model: string }>('GET', '/me'),
   login: (password: string) => call<{ ok: true }>('POST', '/login', { password }),
   logout: () => call<{ ok: true }>('POST', '/logout'),
   briefs: () => call<Brief[]>('GET', '/briefs'),

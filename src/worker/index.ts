@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import { Hono } from 'hono';
 import { deleteCookie, setCookie } from 'hono/cookie';
 import { z } from 'zod';
@@ -7,7 +8,8 @@ import { parseZone, toLocationsParam } from '../shared/zone';
 import { resolvePlaces } from './geo';
 import type { Ad } from '../shared/types';
 import { SESSION_COOKIE, checkPassword, createSession, requireSession } from './auth';
-import { ClaudeError, analyseAds, preparePlan, refinePrompt } from './claude';
+import { analyseAds, preparePlan, refinePrompt } from './ai';
+import { AiError, llm, modelLabel } from './llm';
 import * as db from './db';
 import type { AppEnv } from './env';
 
@@ -38,7 +40,9 @@ app.post('/logout', (c) => {
   return c.json({ ok: true });
 });
 
-app.get('/me', (c) => c.json({ ok: true, mock: c.env.MOCK_CLAUDE === '1', model: c.env.CLAUDE_MODEL }));
+app.get('/me', (c) =>
+  c.json({ ok: true, mock: c.env.MOCK_AI === '1', provider: llm(c.env).label, model: modelLabel(c.env) }),
+);
 
 // --- Hunts ---
 
@@ -198,12 +202,20 @@ app.patch('/briefs/:id/ads/:adId', async (c) => {
 
 app.onError((err, c) => {
   if (err instanceof z.ZodError) return c.json({ error: 'Requête invalide', details: err.issues }, 400);
-  if (err instanceof ClaudeError) return c.json({ error: err.message }, 502);
-  if (err instanceof Anthropic.RateLimitError) return c.json({ error: 'Claude est surchargé, réessaie dans une minute' }, 503);
-  if (err instanceof Anthropic.AuthenticationError) return c.json({ error: 'Clé API Anthropic invalide' }, 502);
-  if (err instanceof Anthropic.APIError) return c.json({ error: `Erreur Claude (${err.status ?? '?'})` }, 502);
+  if (err instanceof AiError) return c.json({ error: err.message }, 502);
+  if (err instanceof Anthropic.RateLimitError || err instanceof OpenAI.RateLimitError) {
+    return c.json({ error: 'Le modèle est surchargé ou ton quota est atteint, réessaie dans une minute' }, 503);
+  }
+  if (err instanceof Anthropic.AuthenticationError || err instanceof OpenAI.AuthenticationError) {
+    return c.json({ error: 'Clé API invalide' }, 502);
+  }
+  if (err instanceof Anthropic.APIError || err instanceof OpenAI.APIError) {
+    return c.json({ error: `Erreur du modèle (${err.status ?? '?'}) : ${err.message.slice(0, 200)}` }, 502);
+  }
   // Unreadable structured output, for instance.
-  if (err instanceof Anthropic.AnthropicError) return c.json({ error: 'Réponse de Claude illisible, réessaie' }, 502);
+  if (err instanceof Anthropic.AnthropicError || err instanceof OpenAI.OpenAIError) {
+    return c.json({ error: 'Réponse du modèle illisible, réessaie' }, 502);
+  }
   console.error(err);
   return c.json({ error: 'Erreur interne' }, 500);
 });

@@ -1,6 +1,6 @@
 # Copy to .dev.vars for local dev (never commit .dev.vars).
-ANTHROPIC_API_KEY=
+OPENAI_API_KEY=
+# ANTHROPIC_API_KEY=   (with LLM_PROVIDER=claude)
 APP_PASSWORD=
 SESSION_SECRET=
-# MOCK_CLAUDE=1 runs without an API key (canned answers).
-MOCK_CLAUDE=1
+# MOCK_AI=1 runs without an API key (canned answers).

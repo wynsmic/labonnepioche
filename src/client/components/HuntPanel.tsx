@@ -169,14 +169,14 @@ export function HuntPanel({
           title={promptDirty ? 'Enregistre d’abord la demande' : undefined}
           onClick={() =>
             run('plan', async () => {
-              addLog('Claude se renseigne et prépare les recherches…');
+              addLog('L’IA se renseigne et prépare les recherches…');
               await api.plan(brief.id);
               await onChanged();
               addLog('Recherches prêtes.');
             })
           }
         >
-          {busy === 'plan' ? 'Claude se renseigne…' : '1. Préparer la recherche'}
+          {busy === 'plan' ? 'Recherche en cours…' : '1. Préparer la recherche'}
         </button>
         <button
           type="button"
@@ -224,7 +224,7 @@ export function HuntPanel({
             run('analyse', async () => {
               let remaining = pending;
               while (remaining > 0 && alive.current) {
-                addLog(`Claude analyse les annonces (${remaining} restantes)…`);
+                addLog(`L’IA analyse les annonces (${remaining} restantes)…`);
                 const r = await api.analyse(brief.id);
                 remaining = r.remaining;
                 if (!alive.current) return;
@@ -239,7 +239,7 @@ export function HuntPanel({
         <button
           type="button"
           disabled={!!busy || !detail.ads.some((a) => a.favorite || a.hidden)}
-          title="Claude relit tes favoris et tes annonces masquées pour préciser la demande"
+          title="L’IA relit tes favoris et tes annonces masquées pour préciser la demande"
           onClick={() =>
             run('refine', async () => {
               setProposal(await api.refine(brief.id));
@@ -259,7 +259,7 @@ export function HuntPanel({
 
       {proposal && (
         <div className="proposal">
-          <strong>Proposition de Claude</strong>
+          <strong>Proposition de l’IA</strong>
           <p className="muted small">{proposal.rationale}</p>
           <textarea
             aria-label="Demande proposée"
@@ -273,7 +273,7 @@ export function HuntPanel({
               className="primary"
               onClick={() =>
                 run('save', async () => {
-                  await api.updateBrief(brief.id, { prompt: proposal.prompt, note: 'Affinée avec Claude' });
+                  await api.updateBrief(brief.id, { prompt: proposal.prompt, note: 'Affinée avec l’IA' });
                   setProposal(null);
                   await onChanged();
                 })
@@ -299,7 +299,7 @@ export function HuntPanel({
       {/* 3. The plan */}
       {plan && (
         <details className="plan" open={!detail.ads.length}>
-          <summary>Recherche préparée par Claude ({plan.plan.searches.length} recherches)</summary>
+          <summary>Recherche préparée par l’IA ({plan.plan.searches.length} recherches)</summary>
           <div className="research">{plan.plan.research}</div>
           <strong className="small">Critères</strong>
           <ul className="small">

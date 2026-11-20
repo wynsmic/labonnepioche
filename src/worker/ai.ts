@@ -1,6 +1,3 @@
-import Anthropic from '@anthropic-ai/sdk';
-import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
-import type { z } from 'zod';
 import {
   AnalysesSchema,
   PlanSchema,
@@ -10,55 +7,7 @@ import {
   type Plan,
   type Refine,
 } from '../shared/types';
-import type { AppEnv } from './env';
-
-type Env = AppEnv['Bindings'];
-
-/** On a policy decline, the API re-runs the request on a server-chosen fallback model. */
-const FALLBACK_BETA = 'server-side-fallback-2026-07-01';
-const MAX_CONTINUATIONS = 4;
-
-export class ClaudeError extends Error {}
-
-function client(env: Env): Anthropic {
-  if (!env.ANTHROPIC_API_KEY) throw new ClaudeError('ANTHROPIC_API_KEY n’est pas configurée');
-  return new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
-}
-
-/** One structured-output request (no tools). */
-async function structured<S extends z.ZodType>(
-  env: Env,
-  schema: S,
-  params: {
-    system: Anthropic.Beta.BetaTextBlockParam[];
-    user: string;
-    effort: 'low' | 'medium' | 'high';
-  },
-): Promise<z.infer<S>> {
-  const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: 'user', content: params.user }];
-  for (let i = 0; i <= MAX_CONTINUATIONS; i++) {
-    const response = await client(env).beta.messages.parse({
-      model: env.CLAUDE_MODEL,
-      max_tokens: 16000,
-      betas: [FALLBACK_BETA],
-      fallbacks: 'default',
-      system: params.system,
-      messages,
-      output_config: { effort: params.effort, format: betaZodOutputFormat(schema) },
-    });
-    if (response.stop_reason === 'pause_turn') {
-      messages.push({ role: 'assistant', content: response.content });
-      continue;
-    }
-    if (response.stop_reason === 'refusal') {
-      throw new ClaudeError(`Claude a décliné la demande (${response.stop_details?.category ?? 'raison inconnue'})`);
-    }
-    if (response.stop_reason === 'max_tokens') throw new ClaudeError('Réponse trop longue, interrompue');
-    if (response.parsed_output == null) throw new ClaudeError('Réponse illisible');
-    return response.parsed_output as z.infer<S>;
-  }
-  throw new ClaudeError('La recherche n’a pas abouti');
-}
+import { llm, type Env } from './llm';
 
 const PREPARE_SYSTEM = `Tu aides un particulier à dénicher de vraies bonnes affaires sur Leboncoin (France).
 On te donne sa demande et une recherche déjà faite sur le web. Résume cette recherche (champ research),
@@ -78,43 +27,14 @@ Rédige une synthèse factuelle et chiffrée en français, sans proposer encore 
  * output does not accept), then the plan built from that research.
  */
 export async function preparePlan(env: Env, prompt: string): Promise<Plan> {
-  if (env.MOCK_CLAUDE === '1') return mockPlan(prompt);
-  const research = await webResearch(env, prompt);
-  return structured(env, PlanSchema, {
-    system: [{ type: 'text', text: PREPARE_SYSTEM }],
+  if (env.MOCK_AI === '1') return mockPlan(prompt);
+  const model = llm(env);
+  const research = await model.webResearch(RESEARCH_SYSTEM, `Ma demande :\n${prompt}`);
+  return model.structured(PlanSchema, {
+    system: PREPARE_SYSTEM,
     user: `Ma demande :\n${prompt}\n\nRecherche déjà faite sur le web :\n${research}`,
     effort: 'high',
   });
-}
-
-async function webResearch(env: Env, prompt: string): Promise<string> {
-  const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: 'user', content: `Ma demande :\n${prompt}` }];
-  for (let i = 0; i <= MAX_CONTINUATIONS; i++) {
-    const response = await client(env).beta.messages.create({
-      model: env.CLAUDE_MODEL,
-      max_tokens: 16000,
-      betas: [FALLBACK_BETA],
-      fallbacks: 'default',
-      system: RESEARCH_SYSTEM,
-      messages,
-      output_config: { effort: 'high' },
-      tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 8 }],
-    });
-    if (response.stop_reason === 'pause_turn') {
-      messages.push({ role: 'assistant', content: response.content });
-      continue;
-    }
-    if (response.stop_reason === 'refusal') {
-      throw new ClaudeError(`Claude a décliné la demande (${response.stop_details?.category ?? 'raison inconnue'})`);
-    }
-    const text = response.content
-      .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text')
-      .map((b) => b.text)
-      .join('');
-    if (!text.trim()) throw new ClaudeError('La recherche web n’a rien donné');
-    return text;
-  }
-  throw new ClaudeError('La recherche web n’a pas abouti');
 }
 
 const ANALYSE_SYSTEM = `Tu juges des annonces Leboncoin pour un particulier qui cherche une bonne affaire.
@@ -140,16 +60,14 @@ function compactAd(ad: Ad) {
 }
 
 export async function analyseAds(env: Env, prompt: string, plan: Plan | null, ads: Ad[]): Promise<Analysis[]> {
-  if (env.MOCK_CLAUDE === '1') return ads.map(mockAnalysis);
+  if (env.MOCK_AI === '1') return ads.map(mockAnalysis);
   const context = plan
     ? `Demande :\n${prompt}\n\nRecherche préalable :\n${plan.research}\n\nCritères :\n- ${plan.criteria.join('\n- ')}`
     : `Demande :\n${prompt}`;
-  const result = await structured(env, AnalysesSchema, {
+  const result = await llm(env).structured(AnalysesSchema, {
     // Same demand and research for every batch: cached after the first one.
-    system: [
-      { type: 'text', text: ANALYSE_SYSTEM },
-      { type: 'text', text: context, cache_control: { type: 'ephemeral' } },
-    ],
+    system: ANALYSE_SYSTEM,
+    context,
     user: `Annonces à juger :\n${JSON.stringify(ads.map(compactAd))}`,
     effort: 'medium',
   });
@@ -168,19 +86,19 @@ export async function refinePrompt(
   favorites: Ad[],
   hidden: Ad[],
 ): Promise<Refine> {
-  if (env.MOCK_CLAUDE === '1') {
+  if (env.MOCK_AI === '1') {
     return { prompt: `${prompt}\n(affiné : privilégier les annonces de particuliers)`, rationale: 'Exemple hors ligne.' };
   }
   const describe = (ads: Ad[]) =>
     ads.length ? ads.map((a) => `- ${a.title} · ${a.price ?? '?'} € · ${a.city ?? ''}`).join('\n') : '(aucune)';
-  return structured(env, RefineSchema, {
-    system: [{ type: 'text', text: REFINE_SYSTEM }],
+  return llm(env).structured(RefineSchema, {
+    system: REFINE_SYSTEM,
     user: `Demande actuelle :\n${prompt}\n\nFavoris :\n${describe(favorites)}\n\nMasquées :\n${describe(hidden)}`,
     effort: 'medium',
   });
 }
 
-// --- Offline answers (MOCK_CLAUDE=1) ---
+// --- Offline answers (MOCK_AI=1) ---
 
 function mockPlan(prompt: string): Plan {
   return {
