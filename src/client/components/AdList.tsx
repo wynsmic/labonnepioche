@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { StoredAd, Verdict } from '../../shared/types';
+import type { Search, StoredAd, Verdict } from '../../shared/types';
 import { Benchmarks } from './Benchmarks';
 
 export const VERDICT_LABEL: Record<Verdict, string> = {
@@ -30,13 +30,15 @@ export function AdList({
   onToggle,
   comparing,
   onCompare,
+  categoryOf,
 }: {
   ads: StoredAd[];
   highlighted: string | null;
   onHover: (id: string | null) => void;
   onToggle: (adId: string, flag: 'favorite' | 'hidden', value: boolean) => void;
   comparing: string | null;
-  onCompare: (adId: string) => void;
+  onCompare: (adId: string, query: Search) => void;
+  categoryOf: (ad: StoredAd) => number;
 }) {
   const [sort, setSort] = useState<Sort>('score');
   const [showHidden, setShowHidden] = useState(false);
@@ -125,7 +127,12 @@ export function AdList({
                 )}
               </div>
             </a>
-            <Benchmarks ad={ad} busy={comparing === ad.id} onCompare={() => onCompare(ad.id)} />
+            <Benchmarks
+              ad={ad}
+              category={categoryOf(ad)}
+              busy={comparing === ad.id}
+              onCompare={(query) => onCompare(ad.id, query)}
+            />
             </div>
             <div className="ad-actions">
               <label title="Favori">

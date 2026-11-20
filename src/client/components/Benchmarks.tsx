@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { buildSearchUrl } from '../../shared/leboncoin';
-import { numberFrom } from '../../shared/compare';
-import type { StoredAd } from '../../shared/types';
+import { comparableQuery, numberFrom } from '../../shared/compare';
+import type { Search, StoredAd } from '../../shared/types';
 
 const euro = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
 const int = new Intl.NumberFormat('fr-FR');
@@ -40,15 +41,76 @@ function Strip({ prices, price, median }: { prices: number[]; price: number; med
 }
 
 /** Evidence that a listing is (or is not) a real deal. */
+/** The national search to compare with, editable before it runs. */
+function CompareForm({
+  initial,
+  busy,
+  onRun,
+  onCancel,
+}: {
+  initial: Search;
+  busy: boolean;
+  onRun: (query: Search) => void;
+  onCancel: () => void;
+}) {
+  const [q, setQ] = useState(initial);
+  const num = (v: string) => (v.trim() ? Number(v) : null);
+  return (
+    <form
+      className="compare-form small"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onRun({ ...q, text: q.text.trim() });
+      }}
+    >
+      <label>
+        Mots-clés
+        <input value={q.text} onChange={(e) => setQ({ ...q, text: e.target.value })} />
+      </label>
+      <div className="pair">
+        <label>
+          Année de
+          <input inputMode="numeric" value={q.regdate_min ?? ''} onChange={(e) => setQ({ ...q, regdate_min: num(e.target.value) })} />
+        </label>
+        <label>
+          à
+          <input inputMode="numeric" value={q.regdate_max ?? ''} onChange={(e) => setQ({ ...q, regdate_max: num(e.target.value) })} />
+        </label>
+      </div>
+      <div className="pair">
+        <label>
+          Km de
+          <input inputMode="numeric" value={q.mileage_min ?? ''} onChange={(e) => setQ({ ...q, mileage_min: num(e.target.value) })} />
+        </label>
+        <label>
+          à
+          <input inputMode="numeric" value={q.mileage_max ?? ''} onChange={(e) => setQ({ ...q, mileage_max: num(e.target.value) })} />
+        </label>
+      </div>
+      <div className="row">
+        <button type="submit" className="primary small" disabled={busy || !q.text.trim()}>
+          {busy ? 'Comparaison…' : 'Comparer en France'}
+        </button>
+        <button type="button" className="ghost small" onClick={onCancel}>
+          Annuler
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export function Benchmarks({
   ad,
+  category,
   busy,
   onCompare,
 }: {
   ad: StoredAd;
+  category: number;
   busy: boolean;
-  onCompare: () => void;
+  onCompare: (query: Search) => void;
 }) {
+  const [editing, setEditing] = useState(false);
   const c = ad.comparison;
   const price = ad.price;
   const mileage = numberFrom(ad.attributes.mileage);
@@ -101,15 +163,28 @@ export function Benchmarks({
             <a href={buildSearchUrl(c.query, null)} target="_blank" rel="noreferrer">
               Recherche nationale ↗
             </a>
-            <button type="button" className="ghost small" disabled={busy} onClick={onCompare}>
-              {busy ? '…' : 'Actualiser'}
+            <button type="button" className="ghost small" disabled={busy} onClick={() => setEditing(true)}>
+              Refaire
             </button>
           </div>
         </>
       ) : (
-        <button type="button" className="small" disabled={busy || price == null} onClick={onCompare}>
-          {busy ? 'Comparaison en France…' : 'Situer le prix en France'}
-        </button>
+        !editing && (
+          <button type="button" className="small" disabled={busy || price == null} onClick={() => setEditing(true)}>
+            {busy ? 'Comparaison en France…' : 'Situer le prix en France'}
+          </button>
+        )
+      )}
+      {editing && (
+        <CompareForm
+          initial={c?.query ?? comparableQuery(ad, category)}
+          busy={busy}
+          onRun={(query) => {
+            setEditing(false);
+            onCompare(query);
+          }}
+          onCancel={() => setEditing(false)}
+        />
       )}
 
       {ai != null && price != null && (

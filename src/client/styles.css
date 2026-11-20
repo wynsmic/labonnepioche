@@ -122,6 +122,10 @@ label { font-weight: 500; }
 .strip-median { stroke: var(--ink); stroke-width: 1.5; }
 .strip-me { fill: var(--accent); stroke: var(--card); stroke-width: 1.5; }
 .strip-label { fill: var(--muted); font-size: 8px; }
+.compare-form { display: grid; gap: 6px; }
+.compare-form label { display: grid; gap: 2px; font-weight: 500; }
+.compare-form input { width: 100%; }
+.compare-form .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .cheapest { margin: 4px 0; padding-left: 16px; }
 @media (max-width: 1100px) {
   .ad-main { grid-template-columns: 1fr; }

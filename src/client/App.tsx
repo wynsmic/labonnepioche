@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { comparableQuery } from '../shared/compare';
 import { buildSearchUrl } from '../shared/leboncoin';
-import type { Ad, Brief } from '../shared/types';
+import type { Ad, Brief, Search, StoredAd } from '../shared/types';
 import { extensionReady, fetchListings } from './extension';
 import { ApiError, api, type BriefDetail } from './api';
 import { AdList } from './components/AdList';
@@ -76,15 +75,16 @@ export function App() {
   };
 
   /** National search for very similar listings, read through the extension, then placed by the server. */
-  const compareAd = async (adId: string) => {
+  const categoryOf = (ad: StoredAd) =>
+    detail?.plan?.plan.searches.find((s) => s.label === ad.searchLabel)?.category ?? 2;
+
+  const compareAd = async (adId: string, query: Search) => {
     if (!detail || comparing) return;
     const ad = detail.ads.find((a) => a.id === adId);
     if (!ad) return;
     setComparing(adId);
     try {
       if (!(await extensionReady())) throw new Error('Extension Affaires introuvable dans ce navigateur.');
-      const category = detail.plan?.plan.searches.find((s) => s.label === ad.searchLabel)?.category ?? 2;
-      const query = comparableQuery(ad, category);
       const candidates: Ad[] = [];
       for (let page = 1; page <= 2; page++) {
         const result = await fetchListings(buildSearchUrl(query, null, page));
@@ -180,6 +180,7 @@ export function App() {
               onToggle={toggleFlag}
               comparing={comparing}
               onCompare={compareAd}
+              categoryOf={categoryOf}
             />
           </section>
           <aside className="right">
