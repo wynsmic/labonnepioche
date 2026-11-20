@@ -45,6 +45,7 @@ export const api = {
   addAds: (id: string, searchLabel: string | null, ads: Ad[]) =>
     call<{ added: number; updated: number; excluded: number }>('POST', `/briefs/${id}/ads`, { searchLabel, ads }),
   analyse: (id: string) => call<{ analysed: number; remaining: number }>('POST', `/briefs/${id}/analyse`),
+  resetAnalyses: (id: string) => call<{ ok: true }>('POST', `/briefs/${id}/reset-analyses`),
   refine: (id: string) => call<Refine>('POST', `/briefs/${id}/refine`),
   compare: (id: string, adId: string, query: Search, candidates: Ad[]) =>
     call<Comparison>('POST', `/briefs/${id}/ads/${adId}/comparison`, { query, candidates }),

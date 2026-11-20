@@ -268,3 +268,8 @@ export async function saveComparison(db: D1Database, briefId: string, adId: stri
     .bind(JSON.stringify(c), briefId, adId)
     .run();
 }
+
+/** Every listing goes back to the analysis queue (after a change in the rules). */
+export async function resetAnalyses(db: D1Database, briefId: string): Promise<void> {
+  await db.prepare('UPDATE ads SET analysis = NULL, analysis_attempts = 0 WHERE brief_id = ?').bind(briefId).run();
+}

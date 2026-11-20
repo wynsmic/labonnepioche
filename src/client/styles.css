@@ -115,6 +115,8 @@ label { font-weight: 500; }
 .bench-big { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .bench-big .small { font-weight: 500; color: var(--muted); }
 .good { color: var(--v-pepite); }
+.fresh { color: var(--v-pepite); font-weight: 600; }
+.stale { color: var(--v-bad); }
 .bad { color: var(--v-bad); }
 .strip { width: 100%; height: auto; }
 .strip-axis { stroke: var(--line); stroke-width: 2; }

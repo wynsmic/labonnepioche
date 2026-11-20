@@ -7,6 +7,7 @@ import {
   type Plan,
   type Refine,
 } from '../shared/types';
+import { ageInDays } from '../shared/compare';
 import { llm, type Env } from './llm';
 
 const PREPARE_SYSTEM = `Tu aides un particulier à dénicher de vraies bonnes affaires sur Leboncoin (France).
@@ -52,6 +53,10 @@ choisis un verdict (pepite = affaire exceptionnelle et crédible, bonne_affaire,
 suspect = prix ou texte qui font craindre une arnaque ou un vice caché, hors_sujet),
 distille l'annonce en 2 ou 3 phrases utiles, liste les points forts, les signaux d'alerte
 et les questions à poser au vendeur. Sois concret et sceptique. Réponds en français.
+Fraîcheur (champ en_ligne_depuis_jours) : une vraie pépite part en quelques heures ou quelques jours.
+- Plus de 3 jours en ligne avec un prix très bas : jamais « pepite » ; c'est un signal d'alerte
+  (défaut caché, prix d'appel, arnaque ou annonce déjà vendue) à mentionner dans red_flags.
+- Plus de 14 jours : le marché l'a probablement jugée trop chère ou problématique ; dis-le.
 Rends exactement une analyse par annonce reçue, avec son id.`;
 
 function formatShortlist(plan: Plan): string {
@@ -70,6 +75,10 @@ function compactAd(ad: Ad) {
     vendeur: ad.seller,
     ville: ad.city,
     publie: ad.date,
+    en_ligne_depuis_jours: (() => {
+      const days = ageInDays(ad.date);
+      return days == null ? null : Math.round(days * 10) / 10;
+    })(),
     caracteristiques: ad.attributes,
     description: ad.body.length > 1500 ? `${ad.body.slice(0, 1500)}…` : ad.body,
   };

@@ -238,6 +238,20 @@ export function HuntPanel({
         </button>
         <button
           type="button"
+          disabled={!!busy || !detail.ads.some((a) => a.analysis)}
+          title="Remet toutes les annonces dans la file d’analyse (après un changement de demande ou de règles)"
+          onClick={() =>
+            run('reset', async () => {
+              if (!window.confirm('Réanalyser toutes les annonces ? Cela coûte de nouveau des appels à l’IA.')) return;
+              await api.resetAnalyses(brief.id);
+              await onChanged();
+            })
+          }
+        >
+          Tout réanalyser
+        </button>
+        <button
+          type="button"
           disabled={!!busy || !detail.ads.some((a) => a.favorite || a.hidden)}
           title="L’IA relit tes favoris et tes annonces masquées pour préciser la demande"
           onClick={() =>

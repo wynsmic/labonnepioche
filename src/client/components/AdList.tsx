@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { Search, StoredAd, Verdict } from '../../shared/types';
 import { Benchmarks } from './Benchmarks';
+import { ageInDays } from '../../shared/compare';
 
 export const VERDICT_LABEL: Record<Verdict, string> = {
   pepite: 'Pépite',
@@ -12,6 +13,20 @@ export const VERDICT_LABEL: Record<Verdict, string> = {
 };
 
 type Sort = 'score' | 'price' | 'recent';
+
+/** Listings with an unknown date stay visible. */
+export function isRecent(ad: StoredAd, maxAgeDays: number | null): boolean {
+  if (maxAgeDays == null) return true;
+  const age = ageInDays(ad.date);
+  return age == null || age <= maxAgeDays;
+}
+
+function ageLabel(date: string | null): string | null {
+  const days = ageInDays(date);
+  if (days == null) return null;
+  if (days < 1) return `il y a ${Math.max(1, Math.round(days * 24))} h`;
+  return `il y a ${Math.floor(days)} j`;
+}
 
 const euro = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
 
@@ -31,6 +46,8 @@ export function AdList({
   comparing,
   onCompare,
   categoryOf,
+  maxAgeDays,
+  onMaxAgeDays,
 }: {
   ads: StoredAd[];
   highlighted: string | null;
@@ -39,13 +56,17 @@ export function AdList({
   comparing: string | null;
   onCompare: (adId: string, query: Search) => void;
   categoryOf: (ad: StoredAd) => number;
+  maxAgeDays: number | null;
+  onMaxAgeDays: (days: number | null) => void;
 }) {
   const [sort, setSort] = useState<Sort>('score');
   const [showHidden, setShowHidden] = useState(false);
   const [onlyFavorites, setOnlyFavorites] = useState(false);
 
   const shown = useMemo(() => {
-    const list = ads.filter((a) => (showHidden || !a.hidden) && (!onlyFavorites || a.favorite));
+    const list = ads.filter(
+      (a) => (showHidden || !a.hidden) && (!onlyFavorites || a.favorite) && isRecent(a, maxAgeDays),
+    );
     const byScore = (a: StoredAd) => a.analysis?.score ?? -1;
     return [...list].sort((a, b) =>
       sort === 'score'
@@ -54,7 +75,8 @@ export function AdList({
           ? (a.price ?? Infinity) - (b.price ?? Infinity)
           : (b.date ?? '').localeCompare(a.date ?? ''),
     );
-  }, [ads, sort, showHidden, onlyFavorites]);
+  }, [ads, sort, showHidden, onlyFavorites, maxAgeDays]);
+  const tooOld = ads.filter((a) => !a.hidden && !isRecent(a, maxAgeDays)).length;
 
   if (!ads.length) {
     return (
@@ -68,7 +90,21 @@ export function AdList({
     <section className="results" aria-label="Annonces">
       <div className="row filters small">
         <strong>{shown.length} annonces</strong>
+        {tooOld > 0 && <span className="muted">({tooOld} plus anciennes)</span>}
         <span className="spacer" />
+        <label>
+          Publiées{' '}
+          <select
+            value={maxAgeDays ?? ''}
+            onChange={(e) => onMaxAgeDays(e.target.value ? Number(e.target.value) : null)}
+          >
+            <option value="1">depuis 24 h</option>
+            <option value="3">depuis 3 j</option>
+            <option value="7">depuis 7 j</option>
+            <option value="30">depuis 30 j</option>
+            <option value="">toutes</option>
+          </select>
+        </label>
         <label>
           Trier par{' '}
           <select value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
@@ -105,7 +141,12 @@ export function AdList({
                 <div className="muted small">{facts(ad)}</div>
                 <div className="muted small">
                   {[ad.city, ad.zipcode].filter(Boolean).join(' ')} · {ad.seller === 'pro' ? 'Pro' : 'Particulier'}
-                  {ad.date ? ` · ${ad.date.slice(0, 10)}` : ''}
+                  {ad.date ? (
+                    <>
+                      {' · '}
+                      <span className={(ageInDays(ad.date) ?? 0) > 3 ? 'stale' : 'fresh'}>{ageLabel(ad.date)}</span>
+                    </>
+                  ) : null}
                 </div>
                 {ad.analysis && (
                   <>

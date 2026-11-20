@@ -182,6 +182,11 @@ app.post('/briefs/:id/analyse', async (c) => {
   return c.json({ analysed, remaining: await db.countToAnalyse(c.env.DB, brief.id) });
 });
 
+app.post('/briefs/:id/reset-analyses', async (c) => {
+  await db.resetAnalyses(c.env.DB, c.req.param('id'));
+  return c.json({ ok: true });
+});
+
 app.post('/briefs/:id/refine', async (c) => {
   const brief = await db.getBrief(c.env.DB, c.req.param('id'));
   if (!brief) return c.json({ error: 'Recherche introuvable' }, 404);

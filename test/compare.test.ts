@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compare, comparableQuery, numberFrom } from '../src/shared/compare';
+import { ageInDays, compare, comparableQuery, numberFrom } from '../src/shared/compare';
 import type { Ad } from '../src/shared/types';
 
 const ad = (id: string, price: number | null, attrs: Record<string, string> = {}, title = 'Toyota Yaris'): Ad => ({
@@ -67,4 +67,11 @@ describe('compare', () => {
 it('reads numbers from Leboncoin labels', () => {
   expect(numberFrom('98 000 km')).toBe(98000);
   expect(numberFrom(undefined)).toBeNull();
+});
+
+it('measures the age of a listing in days', () => {
+  const now = Date.parse('2026-11-20T12:00:00');
+  expect(ageInDays('2026-11-17 12:00:00', now)).toBe(3);
+  expect(ageInDays('2026-11-20 06:00:00', now)).toBe(0.25);
+  expect(ageInDays(null, now)).toBeNull();
 });

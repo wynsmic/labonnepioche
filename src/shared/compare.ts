@@ -120,3 +120,10 @@ export function compare(ad: Ad, candidates: Ad[], query: Search, excludeKeywords
     })),
   };
 }
+
+/** Days since the listing was first published (Leboncoin dates are local "YYYY-MM-DD HH:MM:SS"). */
+export function ageInDays(date: string | null, now = Date.now()): number | null {
+  if (!date) return null;
+  const t = Date.parse(date.replace(' ', 'T'));
+  return Number.isNaN(t) ? null : Math.max(0, (now - t) / 86_400_000);
+}
