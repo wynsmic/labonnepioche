@@ -4,6 +4,7 @@ interface BriefRow {
   id: string;
   title: string;
   prompt: string;
+  zone: string | null;
   locations: string | null;
   updated_at: string;
 }
@@ -22,6 +23,7 @@ const toBrief = (r: BriefRow): Brief => ({
   id: r.id,
   title: r.title,
   prompt: r.prompt,
+  zone: r.zone,
   locations: r.locations,
   updatedAt: r.updated_at,
 });
@@ -37,14 +39,14 @@ const toAd = (r: AdRow): StoredAd => ({
 
 export async function listBriefs(db: D1Database): Promise<Brief[]> {
   const { results } = await db
-    .prepare('SELECT id, title, prompt, locations, updated_at FROM briefs ORDER BY updated_at DESC')
+    .prepare('SELECT id, title, prompt, zone, locations, updated_at FROM briefs ORDER BY updated_at DESC')
     .all<BriefRow>();
   return results.map(toBrief);
 }
 
 export async function getBrief(db: D1Database, id: string): Promise<Brief | null> {
   const row = await db
-    .prepare('SELECT id, title, prompt, locations, updated_at FROM briefs WHERE id = ?')
+    .prepare('SELECT id, title, prompt, zone, locations, updated_at FROM briefs WHERE id = ?')
     .bind(id)
     .first<BriefRow>();
   return row ? toBrief(row) : null;
@@ -52,14 +54,15 @@ export async function getBrief(db: D1Database, id: string): Promise<Brief | null
 
 export async function createBrief(
   db: D1Database,
-  input: { title: string; prompt: string; locations: string | null },
+  input: { title: string; prompt: string; zone: string | null; locations: string | null },
 ): Promise<Brief> {
   const id = crypto.randomUUID();
   await db.batch([
-    db.prepare('INSERT INTO briefs (id, title, prompt, locations) VALUES (?, ?, ?, ?)').bind(
+    db.prepare('INSERT INTO briefs (id, title, prompt, zone, locations) VALUES (?, ?, ?, ?, ?)').bind(
       id,
       input.title,
       input.prompt,
+      input.zone,
       input.locations,
     ),
     db.prepare('INSERT INTO prompt_versions (id, brief_id, prompt, note) VALUES (?, ?, ?, ?)').bind(
@@ -76,17 +79,20 @@ export async function createBrief(
 export async function updateBrief(
   db: D1Database,
   brief: Brief,
-  patch: { title?: string; prompt?: string; locations?: string | null; note?: string },
+  patch: { title?: string; prompt?: string; zone?: { text: string | null; locations: string | null }; note?: string },
 ): Promise<Brief> {
   const next = {
     title: patch.title ?? brief.title,
     prompt: patch.prompt ?? brief.prompt,
-    locations: patch.locations !== undefined ? patch.locations : brief.locations,
+    zone: patch.zone ? patch.zone.text : brief.zone,
+    locations: patch.zone ? patch.zone.locations : brief.locations,
   };
   const statements = [
     db
-      .prepare("UPDATE briefs SET title = ?, prompt = ?, locations = ?, updated_at = datetime('now') WHERE id = ?")
-      .bind(next.title, next.prompt, next.locations, brief.id),
+      .prepare(
+        "UPDATE briefs SET title = ?, prompt = ?, zone = ?, locations = ?, updated_at = datetime('now') WHERE id = ?",
+      )
+      .bind(next.title, next.prompt, next.zone, next.locations, brief.id),
   ];
   if (patch.prompt !== undefined && patch.prompt !== brief.prompt) {
     statements.push(

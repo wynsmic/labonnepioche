@@ -16,7 +16,7 @@ export function NewBrief({
 }) {
   const [title, setTitle] = useState('');
   const [prompt, setPrompt] = useState('');
-  const [locationsUrl, setLocationsUrl] = useState('');
+  const [zone, setZone] = useState('');
   const [busy, setBusy] = useState(false);
 
   return (
@@ -26,7 +26,7 @@ export function NewBrief({
         e.preventDefault();
         setBusy(true);
         try {
-          onCreated(await api.createBrief({ title, prompt, locationsUrl: locationsUrl || undefined }));
+          onCreated(await api.createBrief({ title, prompt, zone: zone || undefined }));
         } catch (err) {
           onError((err as Error).message);
         } finally {
@@ -45,16 +45,16 @@ export function NewBrief({
         onChange={(e) => setPrompt(e.target.value)}
         placeholder={EXAMPLE}
       />
-      <label htmlFor="nb-zone">Zone (facultatif)</label>
+      <label htmlFor="nb-zone">Où ? (facultatif)</label>
       <input
         id="nb-zone"
-        value={locationsUrl}
-        onChange={(e) => setLocationsUrl(e.target.value)}
-        placeholder="Colle l’URL d’une recherche Leboncoin réglée sur ta ville et ton rayon"
+        value={zone}
+        onChange={(e) => setZone(e.target.value)}
+        placeholder="Rennes 30 km, Saint-Malo, Vannes 20 km"
       />
       <p className="muted small">
-        Sur Leboncoin, choisis ta ville et un rayon, lance une recherche, puis copie l’adresse de la page ici. Sans
-        zone, la recherche couvre toute la France.
+        Une ou plusieurs villes, séparées par des virgules, avec un rayon si tu veux (30 km sinon). Vide : toute la
+        France.
       </p>
       <div className="row">
         <button type="submit" className="primary" disabled={busy || !title || prompt.length < 3}>

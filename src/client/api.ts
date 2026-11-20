@@ -34,10 +34,10 @@ export const api = {
   login: (password: string) => call<{ ok: true }>('POST', '/login', { password }),
   logout: () => call<{ ok: true }>('POST', '/logout'),
   briefs: () => call<Brief[]>('GET', '/briefs'),
-  createBrief: (input: { title: string; prompt: string; locationsUrl?: string }) =>
+  createBrief: (input: { title: string; prompt: string; zone?: string }) =>
     call<Brief>('POST', '/briefs', input),
   brief: (id: string) => call<BriefDetail>('GET', `/briefs/${id}`),
-  updateBrief: (id: string, patch: { title?: string; prompt?: string; note?: string; locationsUrl?: string }) =>
+  updateBrief: (id: string, patch: { title?: string; prompt?: string; note?: string; zone?: string }) =>
     call<Brief>('PATCH', `/briefs/${id}`, patch),
   deleteBrief: (id: string) => call<{ ok: true }>('DELETE', `/briefs/${id}`),
   plan: (id: string) => call<{ plan: Plan; createdAt: string }>('POST', `/briefs/${id}/plan`),

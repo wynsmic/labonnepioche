@@ -84,6 +84,8 @@ export interface Brief {
   id: string;
   title: string;
   prompt: string;
+  /** The places as typed ("Rennes 30 km, Saint-Malo"). */
+  zone: string | null;
   locations: string | null;
   updatedAt: string;
 }

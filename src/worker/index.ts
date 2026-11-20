@@ -3,6 +3,8 @@ import { Hono } from 'hono';
 import { deleteCookie, setCookie } from 'hono/cookie';
 import { z } from 'zod';
 import { isExcluded, locationsFromUrl } from '../shared/leboncoin';
+import { parseZone, toLocationsParam } from '../shared/zone';
+import { resolvePlaces } from './geo';
 import type { Ad } from '../shared/types';
 import { SESSION_COOKIE, checkPassword, createSession, requireSession } from './auth';
 import { ClaudeError, analyseAds, preparePlan, refinePrompt } from './claude';
@@ -45,22 +47,37 @@ app.get('/briefs', async (c) => c.json(await db.listBriefs(c.env.DB)));
 const BriefInput = z.object({
   title: z.string().min(1).max(120),
   prompt: z.string().min(3).max(8000),
-  locationsUrl: z.string().max(4000).optional(),
+  /** "Rennes 30 km, Saint-Malo" (or a Leboncoin search URL); empty = all of France. */
+  zone: z.string().max(4000).optional(),
 });
 
-const ZONE_ERROR = 'Cette adresse ne contient pas de zone : copie l’URL d’une recherche Leboncoin réglée sur ta ville.';
-
-/** Empty input clears the zone; a URL without a Leboncoin area is an error (false). */
-function parseZone(url: string | undefined): string | null | false {
-  if (!url?.trim()) return null;
-  return locationsFromUrl(url) ?? false;
+/** Turns the typed places into Leboncoin's `locations` parameter. */
+async function resolveZone(text: string): Promise<{ text: string | null; locations: string | null } | { error: string }> {
+  const trimmed = text.trim();
+  if (!trimmed) return { text: null, locations: null };
+  if (/^https?:\/\//.test(trimmed)) {
+    const locations = locationsFromUrl(trimmed);
+    return locations ? { text: trimmed, locations } : { error: 'Cette adresse Leboncoin ne contient pas de zone.' };
+  }
+  const places = parseZone(trimmed);
+  if (!places.length) return { error: 'Indique au moins une ville.' };
+  const { resolved, missing } = await resolvePlaces(places);
+  if (missing.length) {
+    return { error: `Ville introuvable : ${missing.join(', ')}. Indique des noms de communes (ex. « Rennes 30 km »).` };
+  }
+  return { text: trimmed, locations: toLocationsParam(resolved) };
 }
 
 app.post('/briefs', async (c) => {
   const input = BriefInput.parse(await c.req.json());
-  const locations = parseZone(input.locationsUrl);
-  if (locations === false) return c.json({ error: ZONE_ERROR }, 400);
-  const brief = await db.createBrief(c.env.DB, { title: input.title, prompt: input.prompt, locations });
+  const zone = await resolveZone(input.zone ?? '');
+  if ('error' in zone) return c.json({ error: zone.error }, 400);
+  const brief = await db.createBrief(c.env.DB, {
+    title: input.title,
+    prompt: input.prompt,
+    zone: zone.text,
+    locations: zone.locations,
+  });
   return c.json(brief, 201);
 });
 
@@ -82,13 +99,13 @@ app.patch('/briefs/:id', async (c) => {
   const patch = BriefInput.partial()
     .extend({ note: z.string().max(500).optional() })
     .parse(await c.req.json());
-  const locations = patch.locationsUrl === undefined ? undefined : parseZone(patch.locationsUrl);
-  if (locations === false) return c.json({ error: ZONE_ERROR }, 400);
+  const zone = patch.zone === undefined ? undefined : await resolveZone(patch.zone);
+  if (zone && 'error' in zone) return c.json({ error: zone.error }, 400);
   const updated = await db.updateBrief(c.env.DB, brief, {
     title: patch.title,
     prompt: patch.prompt,
     note: patch.note,
-    locations,
+    zone,
   });
   return c.json(updated);
 });

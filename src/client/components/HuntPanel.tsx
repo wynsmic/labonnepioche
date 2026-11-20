@@ -136,11 +136,11 @@ export function HuntPanel({
       </div>
 
       <details className="zone">
-        <summary>Zone : {brief.locations ? 'définie' : 'toute la France'}</summary>
+        <summary>Où : {brief.zone ?? 'toute la France'}</summary>
         <div className="row">
           <input
-            aria-label="URL Leboncoin avec ta zone"
-            placeholder="URL d’une recherche Leboncoin réglée sur ta ville et ton rayon"
+            aria-label="Villes de recherche"
+            placeholder="Rennes 30 km, Saint-Malo, Vannes 20 km"
             value={zone}
             onChange={(e) => setZone(e.target.value)}
           />
@@ -149,7 +149,7 @@ export function HuntPanel({
             disabled={!!busy}
             onClick={() =>
               run('zone', async () => {
-                await api.updateBrief(brief.id, { locationsUrl: zone });
+                await api.updateBrief(brief.id, { zone });
                 setZone('');
                 await onChanged();
               })
