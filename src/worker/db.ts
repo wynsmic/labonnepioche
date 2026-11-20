@@ -1,3 +1,4 @@
+import type { Comparison } from '../shared/compare';
 import type { Ad, Analysis, Brief, Plan, StoredAd } from '../shared/types';
 
 interface BriefRow {
@@ -17,6 +18,8 @@ interface AdRow {
   analysis: string | null;
   favorite: number;
   hidden: number;
+  first_price: number | null;
+  comparison: string | null;
 }
 
 const toBrief = (r: BriefRow): Brief => ({
@@ -32,6 +35,8 @@ const toAd = (r: AdRow): StoredAd => ({
   ...(JSON.parse(r.data) as Ad),
   searchLabel: r.search_label,
   firstSeen: r.first_seen,
+  firstPrice: r.first_price,
+  comparison: r.comparison ? (JSON.parse(r.comparison) as Comparison) : null,
   favorite: r.favorite === 1,
   hidden: r.hidden === 1,
   analysis: r.analysis ? (JSON.parse(r.analysis) as Analysis) : null,
@@ -141,7 +146,7 @@ export async function latestPlan(db: D1Database, briefId: string): Promise<{ pla
 export async function listAds(db: D1Database, briefId: string): Promise<StoredAd[]> {
   const { results } = await db
     .prepare(
-      'SELECT id, data, search_label, first_seen, analysis, favorite, hidden FROM ads WHERE brief_id = ? ORDER BY first_seen DESC',
+      'SELECT id, data, search_label, first_seen, analysis, favorite, hidden, first_price, comparison FROM ads WHERE brief_id = ? ORDER BY first_seen DESC',
     )
     .bind(briefId)
     .all<AdRow>();
@@ -172,7 +177,7 @@ export async function upsertAds(
     results.forEach((r) => existing.add(r.id));
   }
   const upsert = db.prepare(
-    `INSERT INTO ads (brief_id, id, data, search_label) VALUES (?, ?, ?, ?)
+    `INSERT INTO ads (brief_id, id, data, search_label, first_price) VALUES (?, ?, ?, ?, ?)
      ON CONFLICT (brief_id, id) DO UPDATE SET
        analysis = CASE
          WHEN json_extract(ads.data, '$.price') IS NOT json_extract(excluded.data, '$.price')
@@ -186,7 +191,7 @@ export async function upsertAds(
   );
   for (let i = 0; i < ads.length; i += 50) {
     await db.batch(
-      ads.slice(i, i + 50).map((ad) => upsert.bind(briefId, ad.id, JSON.stringify(ad), searchLabel)),
+      ads.slice(i, i + 50).map((ad) => upsert.bind(briefId, ad.id, JSON.stringify(ad), searchLabel, ad.price)),
     );
   }
   return { added: ads.length - existing.size, updated: existing.size };
@@ -247,4 +252,19 @@ export async function setAdFlags(
       .bind(flags.hidden ? 1 : 0, briefId, adId)
       .run();
   }
+}
+
+export async function getAd(db: D1Database, briefId: string, adId: string): Promise<Ad | null> {
+  const row = await db
+    .prepare('SELECT data FROM ads WHERE brief_id = ? AND id = ?')
+    .bind(briefId, adId)
+    .first<{ data: string }>();
+  return row ? (JSON.parse(row.data) as Ad) : null;
+}
+
+export async function saveComparison(db: D1Database, briefId: string, adId: string, c: Comparison): Promise<void> {
+  await db
+    .prepare('UPDATE ads SET comparison = ? WHERE brief_id = ? AND id = ?')
+    .bind(JSON.stringify(c), briefId, adId)
+    .run();
 }

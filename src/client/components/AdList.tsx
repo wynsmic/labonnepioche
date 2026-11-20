@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { StoredAd, Verdict } from '../../shared/types';
+import { Benchmarks } from './Benchmarks';
 
 export const VERDICT_LABEL: Record<Verdict, string> = {
   pepite: 'Pépite',
@@ -27,11 +28,15 @@ export function AdList({
   highlighted,
   onHover,
   onToggle,
+  comparing,
+  onCompare,
 }: {
   ads: StoredAd[];
   highlighted: string | null;
   onHover: (id: string | null) => void;
   onToggle: (adId: string, flag: 'favorite' | 'hidden', value: boolean) => void;
+  comparing: string | null;
+  onCompare: (adId: string) => void;
 }) {
   const [sort, setSort] = useState<Sort>('score');
   const [showHidden, setShowHidden] = useState(false);
@@ -87,6 +92,7 @@ export function AdList({
             onMouseEnter={() => onHover(ad.id)}
             onMouseLeave={() => onHover(null)}
           >
+            <div className="ad-main">
             <a className="ad-link" href={ad.url} target="_blank" rel="noreferrer">
               <div className="thumb">
                 {ad.image ? <img src={ad.image} alt="" loading="lazy" referrerPolicy="no-referrer" /> : null}
@@ -119,6 +125,8 @@ export function AdList({
                 )}
               </div>
             </a>
+            <Benchmarks ad={ad} busy={comparing === ad.id} onCompare={() => onCompare(ad.id)} />
+            </div>
             <div className="ad-actions">
               <label title="Favori">
                 <input

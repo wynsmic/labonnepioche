@@ -1,4 +1,5 @@
-import type { Ad, Brief, Plan, Refine, StoredAd } from '../shared/types';
+import type { Comparison } from '../shared/compare';
+import type { Ad, Brief, Plan, Refine, Search, StoredAd } from '../shared/types';
 
 export class ApiError extends Error {
   constructor(
@@ -45,6 +46,8 @@ export const api = {
     call<{ added: number; updated: number; excluded: number }>('POST', `/briefs/${id}/ads`, { searchLabel, ads }),
   analyse: (id: string) => call<{ analysed: number; remaining: number }>('POST', `/briefs/${id}/analyse`),
   refine: (id: string) => call<Refine>('POST', `/briefs/${id}/refine`),
+  compare: (id: string, adId: string, query: Search, candidates: Ad[]) =>
+    call<Comparison>('POST', `/briefs/${id}/ads/${adId}/comparison`, { query, candidates }),
   flagAd: (id: string, adId: string, flags: { favorite?: boolean; hidden?: boolean }) =>
     call<{ ok: true }>('PATCH', `/briefs/${id}/ads/${adId}`, flags),
 };

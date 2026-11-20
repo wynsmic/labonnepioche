@@ -95,6 +95,9 @@ export interface Ad {
 
 export interface StoredAd extends Ad {
   searchLabel: string | null;
+  /** Price when the listing was first collected. */
+  firstPrice: number | null;
+  comparison: import('./compare').Comparison | null;
   firstSeen: string;
   favorite: boolean;
   hidden: boolean;

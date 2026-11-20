@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Brief } from '../shared/types';
+import { comparableQuery } from '../shared/compare';
+import { buildSearchUrl } from '../shared/leboncoin';
+import type { Ad, Brief } from '../shared/types';
+import { extensionReady, fetchListings } from './extension';
 import { ApiError, api, type BriefDetail } from './api';
 import { AdList } from './components/AdList';
 import { AdMap } from './components/AdMap';
@@ -17,6 +20,7 @@ export function App() {
   const [creating, setCreating] = useState(false);
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [comparing, setComparing] = useState<string | null>(null);
 
   const checkSession = useCallback(async () => {
     try {
@@ -68,6 +72,36 @@ export function App() {
     } catch (e) {
       setError((e as Error).message);
       void reload();
+    }
+  };
+
+  /** National search for very similar listings, read through the extension, then placed by the server. */
+  const compareAd = async (adId: string) => {
+    if (!detail || comparing) return;
+    const ad = detail.ads.find((a) => a.id === adId);
+    if (!ad) return;
+    setComparing(adId);
+    try {
+      if (!(await extensionReady())) throw new Error('Extension Affaires introuvable dans ce navigateur.');
+      const category = detail.plan?.plan.searches.find((s) => s.label === ad.searchLabel)?.category ?? 2;
+      const query = comparableQuery(ad, category);
+      const candidates: Ad[] = [];
+      for (let page = 1; page <= 2; page++) {
+        const result = await fetchListings(buildSearchUrl(query, null, page));
+        if (!result.ok) {
+          if (result.reason === 'captcha') throw new Error('Leboncoin a demandé une vérification. Réessaie dans un moment.');
+          break;
+        }
+        candidates.push(...result.ads);
+        if (result.ads.length < 20) break;
+        await new Promise((r) => setTimeout(r, 4_000 + Math.random() * 3_000));
+      }
+      await api.compare(detail.brief.id, ad.id, query, candidates);
+      await reload();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setComparing(null);
     }
   };
 
@@ -144,6 +178,8 @@ export function App() {
               highlighted={highlighted}
               onHover={setHighlighted}
               onToggle={toggleFlag}
+              comparing={comparing}
+              onCompare={compareAd}
             />
           </section>
           <aside className="right">

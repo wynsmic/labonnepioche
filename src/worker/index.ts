@@ -6,7 +6,8 @@ import { z } from 'zod';
 import { isExcluded, locationsFromUrl } from '../shared/leboncoin';
 import { parseZone, toLocationsParam } from '../shared/zone';
 import { resolvePlaces } from './geo';
-import type { Ad } from '../shared/types';
+import { MIN_COMPARABLES, compare } from '../shared/compare';
+import { SearchSchema, type Ad } from '../shared/types';
 import { SESSION_COOKIE, checkPassword, createSession, requireSession } from './auth';
 import { analyseAds, preparePlan, refinePrompt } from './ai';
 import { AiError, llm, modelLabel } from './llm';
@@ -192,6 +193,24 @@ app.post('/briefs/:id/refine', async (c) => {
     ads.filter((a) => a.hidden).slice(0, 30),
   );
   return c.json(proposal);
+});
+
+/** Places a listing among very similar ones across France (collected by the extension). */
+app.post('/briefs/:id/ads/:adId/comparison', async (c) => {
+  const briefId = c.req.param('id');
+  const ad = await db.getAd(c.env.DB, briefId, c.req.param('adId'));
+  if (!ad) return c.json({ error: 'Annonce introuvable' }, 404);
+  const input = z
+    .object({ query: SearchSchema, candidates: z.array(AdSchema).max(300) })
+    .parse(await c.req.json());
+  const current = await db.latestPlan(c.env.DB, briefId);
+  const exclude = [...new Set(current?.plan.searches.flatMap((s) => s.exclude_keywords) ?? [])];
+  const comparison = compare(ad, input.candidates, input.query, exclude, new Date().toISOString());
+  if (!comparison) {
+    return c.json({ error: `Pas assez d’annonces comparables en France (moins de ${MIN_COMPARABLES})` }, 422);
+  }
+  await db.saveComparison(c.env.DB, briefId, ad.id, comparison);
+  return c.json(comparison);
 });
 
 app.patch('/briefs/:id/ads/:adId', async (c) => {
