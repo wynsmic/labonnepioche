@@ -42,10 +42,21 @@ export function locationsFromUrl(url: string): string | null {
   }
 }
 
+/** Seller circumstances are opportunities, never reasons to drop a listing. */
+const SELLER_SITUATION = new Set(['urgent', 'presse', 'pressee', 'depart', 'demenagement', 'demenage', 'mutation', 'negociable']);
+const isSellerSituation = (keyword: string) =>
+  keyword
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .split(/[^\p{L}\p{N}]+/u)
+    .some((w) => SELLER_SITUATION.has(w));
+
 /** True when the listing contains one of the plan's disqualifying expressions (whole words). */
 export function isExcluded(text: string, excludeKeywords: string[]): boolean {
   const haystack = ` ${text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ')} `;
   return excludeKeywords.some((k) => {
+    if (isSellerSituation(k)) return false;
     const needle = k.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
     return needle.length > 0 && haystack.includes(` ${needle} `);
   });

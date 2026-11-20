@@ -12,10 +12,13 @@ import { llm, type Env } from './llm';
 
 const PREPARE_SYSTEM = `Tu aides un particulier à dénicher de vraies bonnes affaires sur Leboncoin (France).
 On te donne sa demande et une recherche déjà faite sur le web.
-Principe : on ne garde QUE les meilleurs choix. Il ne s'agit pas d'éviter les mauvais, mais de ne retenir
-que ce qui est excellent pour la demande. Construis la shortlist (2 à 6 choix recommandés sans réserve, avec
-les versions précises), puis des critères, puis des recherches Leboncoin qui ne ciblent que ces choix
-(une ou deux par choix, fourchettes de prix et de kilométrage cohérentes avec leur prix de marché).
+Principe : on ne garde QUE des choix réellement bons. Il ne s'agit pas d'éviter les mauvais, mais de ne
+retenir que ce qui est recommandable pour la demande, sans en oublier : un choix fiable mais moins demandé
+est souvent là où se cachent les pépites. Construis la shortlist (6 à 12 choix, versions précises, niveau
+excellent ou très bon), puis des critères, puis des recherches Leboncoin qui ne ciblent que ces choix
+(une par choix, fourchettes de prix et de kilométrage cohérentes avec leur prix de marché).
+Mots d'exclusion : seulement ce qui dit que l'objet est hors d'usage, jamais la situation du vendeur
+(urgent, pressé, départ, déménagement : ce sont des occasions d'affaires).
 Une « affaire » = un choix de la shortlist, en bon état prouvé, sous son prix de marché, sans signe d'arnaque.
 Les champs non pertinents (kilométrage hors véhicules…) valent null. Réponds en français.`;
 
@@ -24,8 +27,10 @@ Ton but : trouver les MEILLEURS choix pour sa demande, pas lister ce qu'il faut 
 Cherche sur le web les références reconnues comme les meilleures par plusieurs sources indépendantes
 (fiabilité mesurée, retours de propriétaires, études de fiabilité, coûts d'usage, adéquation à la demande).
 Pour chaque choix retenu : versions ou motorisations précises, années, preuves de sa supériorité,
-prix de marché d'occasion réaliste. Sois exigeant : retiens peu de choix, seulement ceux qui sont
-excellents, et dis en une phrase pourquoi les alternatives connues ne sont pas retenues.
+prix de marché d'occasion réaliste. Sois exigeant sur la fiabilité, pas sur le nombre : couvre tous les
+choix réellement bons (6 à 12), y compris les moins connus ou moins demandés, qui se revendent moins cher
+pour une qualité équivalente. Distingue les références (excellent) des très bons choix. Dis en une phrase
+pourquoi les alternatives connues ne sont pas retenues.
 Rédige une synthèse factuelle et chiffrée en français, sans proposer encore de recherches Leboncoin.`;
 
 /**
@@ -46,6 +51,10 @@ export async function preparePlan(env: Env, prompt: string): Promise<Plan> {
 const ANALYSE_SYSTEM = `Tu juges des annonces Leboncoin pour un particulier qui cherche une bonne affaire.
 Règle principale : seuls les choix de la shortlist comptent (modèle ET version ou motorisation ET années).
 - Annonce hors shortlist : verdict hors_sujet, score 10 au plus, même si le prix est bas.
+- Un choix « excellent » comme un « très bon » peut être une pépite si le prix est nettement sous son marché.
+- Un vendeur pressé (urgent, départ, déménagement) est une chance de bonne affaire, pas un défaut ;
+  ce n'est un signal d'alerte que combiné à des signes d'arnaque (paiement à distance, objet à l'étranger,
+  prix irréaliste).
 - Version ou motorisation impossible à confirmer d'après l'annonce : score 50 au plus, et la question
   pour la vérifier parmi les questions au vendeur.
 Pour chaque annonce : note son intérêt de 0 à 100 au regard de la demande et du prix de marché,
@@ -62,7 +71,7 @@ Rends exactement une analyse par annonce reçue, avec son id.`;
 function formatShortlist(plan: Plan): string {
   // Plans saved before the shortlist existed have none.
   return (plan.shortlist ?? [])
-    .map((p) => `- ${p.name} — ${p.versions.join(', ')} — ${p.years} — prix de marché ${p.fair_price}`)
+    .map((p) => `- ${p.name} (${p.tier === 'excellent' ? 'excellent' : 'très bon'}) — ${p.versions.join(', ')} — ${p.years} — prix de marché ${p.fair_price}`)
     .join('\n');
 }
 
@@ -135,6 +144,7 @@ function mockPlan(prompt: string): Plan {
     shortlist: [
       {
         name: 'Toyota Yaris III',
+        tier: 'excellent',
         versions: ['1.0 VVT-i 69 ch', '1.33 Dual VVT-i'],
         years: '2014–2019',
         why: 'Exemple hors ligne',

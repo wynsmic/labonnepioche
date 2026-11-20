@@ -332,10 +332,13 @@ export function HuntPanel({
       {/* 3. The plan: the shortlist first, it decides everything else */}
       {plan && (plan.plan.shortlist?.length ?? 0) > 0 && (
         <div className="shortlist">
-          <strong>Seuls choix retenus</strong>
+          <strong>Choix retenus ({plan.plan.shortlist.length})</strong>
           <ul>
             {plan.plan.shortlist.map((p) => (
               <li key={p.name}>
+                {p.tier && (
+                  <span className={`tier ${p.tier}`}>{p.tier === 'excellent' ? 'Excellent' : 'Très bon'}</span>
+                )}{' '}
                 <strong>{p.name}</strong> · {p.versions.join(', ')} · {p.years}
                 <span className="muted small"> — marché {p.fair_price}</span>
                 <div className="muted small">{p.why}</div>

@@ -22,7 +22,7 @@ export const SearchSchema = z.object({
   exclude_keywords: z
     .array(z.string())
     .describe(
-      'Expressions qui disqualifient sans ambiguïté (« pour pièces », « moteur HS », « épave », « sans CT »). Jamais une caractéristique (carburant, boîte, équipement) : « automatique » écarterait aussi « climatisation automatique ». Les préférences vont dans les critères',
+      'Expressions qui disent que L’OBJET est hors d’usage (« pour pièces », « moteur HS », « épave », « non roulant »). Jamais une caractéristique (carburant, boîte, équipement) ni la situation du vendeur (« urgent », « vendeur pressé », « départ à l’étranger », « déménagement ») : un vendeur pressé est justement une source d’affaires, les signes d’arnaque se jugent à l’analyse',
     ),
 });
 export type Search = z.infer<typeof SearchSchema>;
@@ -31,6 +31,9 @@ export type Search = z.infer<typeof SearchSchema>;
 /** One of the very best choices for the demand: only these are hunted. */
 export const PickSchema = z.object({
   name: z.string().describe('Modèle ou référence, ex. « Toyota Yaris III »'),
+  tier: z
+    .enum(['excellent', 'tres_bon'])
+    .describe('excellent = référence du marché ; tres_bon = fiable et adapté, moins demandé (souvent de meilleures affaires)'),
   versions: z
     .array(z.string())
     .describe('Versions, motorisations ou séries retenues, précises (« 1.0 VVT-i 69 ch », « 1.33 Dual VVT-i »)'),
@@ -43,7 +46,9 @@ export type Pick = z.infer<typeof PickSchema>;
 export const PlanSchema = z.object({
   shortlist: z
     .array(PickSchema)
-    .describe('UNIQUEMENT les meilleurs choix, 2 à 6, recommandés sans réserve. Tout ce qui n’y figure pas est écarté'),
+    .describe(
+      'Tous les choix réellement bons pour la demande, 6 à 12, classés excellent / très bon. Exigeant sur la fiabilité, pas sur le nombre. Tout ce qui n’y figure pas est écarté',
+    ),
   research: z.string().describe('Synthèse courte : pourquoi ces choix et pas les autres, prix de référence, pièges'),
   criteria: z.array(z.string()).describe('Critères concrets pour juger une annonce d’un modèle retenu'),
   searches: z

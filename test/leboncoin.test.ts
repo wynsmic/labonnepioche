@@ -60,6 +60,10 @@ describe('isExcluded', () => {
     expect(isExcluded('Vends Clio POUR PIÈCES', ['pour pièces'])).toBe(true);
     expect(isExcluded('Clio très bon état', ['pour pièces', ' '])).toBe(false);
   });
+  it('never drops a listing for the seller’s situation', () => {
+    expect(isExcluded('Vends cause départ, urgent', ['urgent', 'vendeur pressé', 'départ'])).toBe(false);
+    expect(isExcluded('Boîte de vitesse HS', ['boîte de vitesse HS'])).toBe(true);
+  });
   it('matches whole words only', () => {
     expect(isExcluded('Moteur HS, vendue en l’état', ['moteur hs'])).toBe(true);
     expect(isExcluded('Yaris, climatisation automatique', ['auto'])).toBe(false);
