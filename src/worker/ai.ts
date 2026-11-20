@@ -14,7 +14,7 @@ const PREPARE_SYSTEM = `Tu aides un particulier à dénicher de vraies bonnes af
 On te donne sa demande et une recherche déjà faite sur le web.
 Principe : on ne garde QUE des choix réellement bons. Il ne s'agit pas d'éviter les mauvais, mais de ne
 retenir que ce qui est recommandable pour la demande, sans en oublier : un choix fiable mais moins demandé
-est souvent là où se cachent les pépites. Construis la shortlist (6 à 12 choix, versions précises, niveau
+est souvent là où se cachent les pépites. Construis la shortlist (autant de choix que la demande en justifie, versions précises, niveau
 excellent ou très bon), puis des critères, puis des recherches Leboncoin qui ne ciblent que ces choix
 (une par choix, fourchettes de prix et de kilométrage cohérentes avec leur prix de marché).
 Mots d'exclusion : seulement ce qui dit que l'objet est hors d'usage, jamais la situation du vendeur
@@ -28,7 +28,7 @@ Cherche sur le web les références reconnues comme les meilleures par plusieurs
 (fiabilité mesurée, retours de propriétaires, études de fiabilité, coûts d'usage, adéquation à la demande).
 Pour chaque choix retenu : versions ou motorisations précises, années, preuves de sa supériorité,
 prix de marché d'occasion réaliste. Sois exigeant sur la fiabilité, pas sur le nombre : couvre tous les
-choix réellement bons (6 à 12), y compris les moins connus ou moins demandés, qui se revendent moins cher
+choix réellement bons, autant qu'il y en a pour cette demande, y compris les moins connus ou moins demandés, qui se revendent moins cher
 pour une qualité équivalente. Distingue les références (excellent) des très bons choix. Dis en une phrase
 pourquoi les alternatives connues ne sont pas retenues.
 Rédige une synthèse factuelle et chiffrée en français, sans proposer encore de recherches Leboncoin.`;

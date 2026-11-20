@@ -47,7 +47,7 @@ export const PlanSchema = z.object({
   shortlist: z
     .array(PickSchema)
     .describe(
-      'Tous les choix réellement bons pour la demande, 6 à 12, classés excellent / très bon. Exigeant sur la fiabilité, pas sur le nombre. Tout ce qui n’y figure pas est écarté',
+      'Tous les choix réellement bons pour la demande, autant qu’il y en a, classés excellent / très bon. Exigeant sur la fiabilité, pas sur le nombre. Tout ce qui n’y figure pas est écarté',
     ),
   research: z.string().describe('Synthèse courte : pourquoi ces choix et pas les autres, prix de référence, pièges'),
   criteria: z.array(z.string()).describe('Critères concrets pour juger une annonce d’un modèle retenu'),
