@@ -95,6 +95,8 @@ label { font-weight: 500; }
 .hunt { display: grid; gap: 10px; }
 .steps { display: flex; gap: 8px; flex-wrap: wrap; }
 .zone summary, .plan summary { cursor: pointer; color: var(--muted); }
+.shortlist { border-left: 3px solid var(--v-pepite); padding: 4px 0 4px 12px; }
+.shortlist ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 6px; }
 .plan { border-top: 1px solid var(--line); padding-top: 8px; }
 .research { white-space: pre-wrap; font-size: 14px; margin: 8px 0; }
 .searches { list-style: none; padding: 0; display: grid; gap: 8px; }

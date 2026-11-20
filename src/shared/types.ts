@@ -28,12 +28,27 @@ export const SearchSchema = z.object({
 export type Search = z.infer<typeof SearchSchema>;
 
 /** What Claude returns when preparing a hunt. */
+/** One of the very best choices for the demand: only these are hunted. */
+export const PickSchema = z.object({
+  name: z.string().describe('Modèle ou référence, ex. « Toyota Yaris III »'),
+  versions: z
+    .array(z.string())
+    .describe('Versions, motorisations ou séries retenues, précises (« 1.0 VVT-i 69 ch », « 1.33 Dual VVT-i »)'),
+  years: z.string().describe('Années retenues, ex. « 2014–2019 »'),
+  why: z.string().describe('Pourquoi c’est un des meilleurs choix, avec les faits qui le prouvent'),
+  fair_price: z.string().describe('Prix de marché d’occasion constaté pour ces versions, ex. « 7 000–9 000 € selon km »'),
+});
+export type Pick = z.infer<typeof PickSchema>;
+
 export const PlanSchema = z.object({
-  research: z
-    .string()
-    .describe('Synthèse de la recherche préalable (marché, modèles à privilégier, prix de référence, pièges), en Markdown court'),
-  criteria: z.array(z.string()).describe('Critères concrets pour juger une annonce'),
-  searches: z.array(SearchSchema).describe('3 à 8 recherches Leboncoin complémentaires'),
+  shortlist: z
+    .array(PickSchema)
+    .describe('UNIQUEMENT les meilleurs choix, 2 à 6, recommandés sans réserve. Tout ce qui n’y figure pas est écarté'),
+  research: z.string().describe('Synthèse courte : pourquoi ces choix et pas les autres, prix de référence, pièges'),
+  criteria: z.array(z.string()).describe('Critères concrets pour juger une annonce d’un modèle retenu'),
+  searches: z
+    .array(SearchSchema)
+    .describe('Recherches Leboncoin ciblées sur les seuls modèles retenus (une ou deux par modèle)'),
 });
 export type Plan = z.infer<typeof PlanSchema>;
 

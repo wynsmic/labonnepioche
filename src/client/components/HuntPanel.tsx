@@ -296,10 +296,24 @@ export function HuntPanel({
         </ol>
       )}
 
-      {/* 3. The plan */}
+      {/* 3. The plan: the shortlist first, it decides everything else */}
+      {plan && (plan.plan.shortlist?.length ?? 0) > 0 && (
+        <div className="shortlist">
+          <strong>Seuls choix retenus</strong>
+          <ul>
+            {plan.plan.shortlist.map((p) => (
+              <li key={p.name}>
+                <strong>{p.name}</strong> · {p.versions.join(', ')} · {p.years}
+                <span className="muted small"> — marché {p.fair_price}</span>
+                <div className="muted small">{p.why}</div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {plan && (
         <details className="plan" open={!detail.ads.length}>
-          <summary>Recherche préparée par l’IA ({plan.plan.searches.length} recherches)</summary>
+          <summary>Détail de la recherche ({plan.plan.searches.length} recherches Leboncoin)</summary>
           <div className="research">{plan.plan.research}</div>
           <strong className="small">Critères</strong>
           <ul className="small">

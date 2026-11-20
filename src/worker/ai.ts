@@ -10,17 +10,22 @@ import {
 import { llm, type Env } from './llm';
 
 const PREPARE_SYSTEM = `Tu aides un particulier à dénicher de vraies bonnes affaires sur Leboncoin (France).
-On te donne sa demande et une recherche déjà faite sur le web. Résume cette recherche (champ research),
-déduis-en des critères concrets, puis propose 3 à 8 recherches Leboncoin complémentaires qui couvrent la demande sans se recouvrir :
-plusieurs gammes de prix et de kilométrage quand c'est pertinent, les modèles retenus, des mots-clés utiles.
-Pour une « affaire », vise sous le prix de marché sans tomber dans l'arnaque.
+On te donne sa demande et une recherche déjà faite sur le web.
+Principe : on ne garde QUE les meilleurs choix. Il ne s'agit pas d'éviter les mauvais, mais de ne retenir
+que ce qui est excellent pour la demande. Construis la shortlist (2 à 6 choix recommandés sans réserve, avec
+les versions précises), puis des critères, puis des recherches Leboncoin qui ne ciblent que ces choix
+(une ou deux par choix, fourchettes de prix et de kilométrage cohérentes avec leur prix de marché).
+Une « affaire » = un choix de la shortlist, en bon état prouvé, sous son prix de marché, sans signe d'arnaque.
 Les champs non pertinents (kilométrage hors véhicules…) valent null. Réponds en français.`;
 
 const RESEARCH_SYSTEM = `Tu aides un particulier à dénicher de vraies bonnes affaires sur Leboncoin (France).
-Renseigne-toi sur le web pour sa demande : ce qu'il faut privilégier (modèles, versions, motorisations,
-années, marques fiables…), ce qu'il faut fuir (défauts connus, séries à problèmes), les prix de marché
-d'occasion réalistes selon l'âge et l'usure, et les pièges courants des annonces de ce type.
-Rédige une synthèse factuelle et chiffrée en français, sans proposer encore de recherches.`;
+Ton but : trouver les MEILLEURS choix pour sa demande, pas lister ce qu'il faut éviter.
+Cherche sur le web les références reconnues comme les meilleures par plusieurs sources indépendantes
+(fiabilité mesurée, retours de propriétaires, études de fiabilité, coûts d'usage, adéquation à la demande).
+Pour chaque choix retenu : versions ou motorisations précises, années, preuves de sa supériorité,
+prix de marché d'occasion réaliste. Sois exigeant : retiens peu de choix, seulement ceux qui sont
+excellents, et dis en une phrase pourquoi les alternatives connues ne sont pas retenues.
+Rédige une synthèse factuelle et chiffrée en français, sans proposer encore de recherches Leboncoin.`;
 
 /**
  * Two steps: web research as plain text (web results come with citations, which structured
@@ -38,12 +43,23 @@ export async function preparePlan(env: Env, prompt: string): Promise<Plan> {
 }
 
 const ANALYSE_SYSTEM = `Tu juges des annonces Leboncoin pour un particulier qui cherche une bonne affaire.
+Règle principale : seuls les choix de la shortlist comptent (modèle ET version ou motorisation ET années).
+- Annonce hors shortlist : verdict hors_sujet, score 10 au plus, même si le prix est bas.
+- Version ou motorisation impossible à confirmer d'après l'annonce : score 50 au plus, et la question
+  pour la vérifier parmi les questions au vendeur.
 Pour chaque annonce : note son intérêt de 0 à 100 au regard de la demande et du prix de marché,
 choisis un verdict (pepite = affaire exceptionnelle et crédible, bonne_affaire, correct, cher,
 suspect = prix ou texte qui font craindre une arnaque ou un vice caché, hors_sujet),
 distille l'annonce en 2 ou 3 phrases utiles, liste les points forts, les signaux d'alerte
 et les questions à poser au vendeur. Sois concret et sceptique. Réponds en français.
 Rends exactement une analyse par annonce reçue, avec son id.`;
+
+function formatShortlist(plan: Plan): string {
+  // Plans saved before the shortlist existed have none.
+  return (plan.shortlist ?? [])
+    .map((p) => `- ${p.name} — ${p.versions.join(', ')} — ${p.years} — prix de marché ${p.fair_price}`)
+    .join('\n');
+}
 
 /** Fields of a listing worth sending to Claude (keeps tokens down). */
 function compactAd(ad: Ad) {
@@ -62,7 +78,12 @@ function compactAd(ad: Ad) {
 export async function analyseAds(env: Env, prompt: string, plan: Plan | null, ads: Ad[]): Promise<Analysis[]> {
   if (env.MOCK_AI === '1') return ads.map(mockAnalysis);
   const context = plan
-    ? `Demande :\n${prompt}\n\nRecherche préalable :\n${plan.research}\n\nCritères :\n- ${plan.criteria.join('\n- ')}`
+    ? [
+        `Demande :\n${prompt}`,
+        `Shortlist (seuls choix acceptés) :\n${formatShortlist(plan)}`,
+        `Recherche préalable :\n${plan.research}`,
+        `Critères :\n- ${plan.criteria.join('\n- ')}`,
+      ].join('\n\n')
     : `Demande :\n${prompt}`;
   const result = await llm(env).structured(AnalysesSchema, {
     // Same demand and research for every batch: cached after the first one.
@@ -102,6 +123,15 @@ export async function refinePrompt(
 
 function mockPlan(prompt: string): Plan {
   return {
+    shortlist: [
+      {
+        name: 'Toyota Yaris III',
+        versions: ['1.0 VVT-i 69 ch', '1.33 Dual VVT-i'],
+        years: '2014–2019',
+        why: 'Exemple hors ligne',
+        fair_price: '7 000–9 000 €',
+      },
+    ],
     research: `**Exemple hors ligne** pour : ${prompt.slice(0, 80)}\n\nToyota Yaris/Corolla hybrides et Honda Jazz sont réputées fiables.`,
     criteria: ['Entretien suivi', 'Moins de 150 000 km', 'Prix sous la cote'],
     searches: [
