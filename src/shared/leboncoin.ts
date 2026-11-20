@@ -23,6 +23,8 @@ export function buildSearchUrl(search: Search, locations: string | null, page = 
   const regdate = range(search.regdate_min, search.regdate_max);
   if (regdate) params.set('regdate', regdate);
   if (locations) params.set('locations', locations);
+  // Private sellers only: real deals don't come from professionals.
+  params.set('owner_type', 'private');
   params.set('sort', 'time');
   params.set('order', 'desc');
   if (page > 1) params.set('page', String(page));
@@ -63,10 +65,12 @@ const firstNumber = (value: string | undefined) => {
 };
 
 /**
- * Safety net on what Leboncoin returned: the listing must match the planned search (all its
- * keywords in the title or make/model, price, year and mileage within range). Unknown values pass.
+ * Safety net on what Leboncoin returned: a private seller, and a listing that matches the planned
+ * search (all its keywords in the title or make/model, price, year and mileage within range).
+ * Unknown values pass.
  */
 export function matchesSearch(ad: Ad, search: Search): boolean {
+  if (ad.seller === 'pro') return false;
   const haystack = ` ${normalize(`${ad.title} ${ad.attributes.brand ?? ''} ${ad.attributes.model ?? ''}`)} `;
   const words = normalize(search.text).split(' ').filter((w) => w.length > 1);
   if (!words.every((w) => haystack.includes(` ${w} `) || haystack.includes(` ${w}`))) return false;

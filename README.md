@@ -4,7 +4,8 @@ Trouve les bonnes affaires sur Leboncoin avec une IA (GPT par défaut, ou Claude
 
 1. **Préparer** : tu décris ce que tu cherches. L’IA se renseigne sur le web (modèles fiables, prix de marché,
    pièges), puis propose plusieurs recherches Leboncoin complémentaires (gammes de prix, kilométrages, mots-clés).
-2. **Récupérer** : l'extension Chrome ouvre ces recherches dans ton navigateur, lit les annonces affichées et les
+2. **Récupérer** : l'extension Chrome ouvre ces recherches (particuliers uniquement : les vraies affaires ne
+   viennent pas des professionnels) dans ton navigateur, lit les annonces affichées et les
    envoie à l'outil. Les annonces qui contiennent un mot disqualifiant (« pour pièces »…) sont écartées.
 3. **Analyser** : l’IA note chaque annonce (0–100, verdict, prix de marché), la résume, liste les signaux
    d'alerte et les questions à poser.

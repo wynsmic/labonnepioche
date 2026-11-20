@@ -89,7 +89,8 @@ export function compare(ad: Ad, candidates: Ad[], query: Search, excludeKeywords
   if (ad.price == null) return null;
   const seen = new Set<string>([ad.id]);
   const kept = candidates.filter((c) => {
-    if (seen.has(c.id) || c.price == null || c.price < 100) return false;
+    // Same market as the listings we hunt: private sellers only.
+    if (seen.has(c.id) || c.price == null || c.price < 100 || c.seller === 'pro') return false;
     seen.add(c.id);
     return sameVersion(ad, c) && !isExcluded(`${c.title} ${c.body}`, excludeKeywords);
   });

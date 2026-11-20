@@ -244,7 +244,7 @@ export function HuntPanel({
         <button
           type="button"
           disabled={!!busy || !plan || detail.ads.length === 0}
-          title="Retire les annonces qui ne correspondent à aucune des recherches préparées (les favoris restent)"
+          title="Retire les annonces de professionnels et celles qui ne correspondent à aucune des recherches préparées (les favoris restent)"
           onClick={() =>
             run('clean', async () => {
               const r = await api.clean(brief.id);

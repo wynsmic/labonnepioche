@@ -48,13 +48,14 @@ describe('compare', () => {
     expect(c.cheapest[0].price).toBe(7500);
   });
 
-  it('drops other versions, unpriced, duplicates and disqualified listings', () => {
+  it('drops other versions, unpriced, duplicates, professionals and disqualified listings', () => {
     const noisy = [
       ...others,
       ad('20', 3000, { fuel: 'Diesel' }),
       ad('21', null),
       ad('10', 9000),
       ad('22', 2000, {}, 'Yaris pour pièces'),
+      { ...ad('23', 12000), seller: 'pro' as const },
     ];
     expect(compare(target, noisy, query, ['pour pièces'], 'now')!.count).toBe(6);
   });

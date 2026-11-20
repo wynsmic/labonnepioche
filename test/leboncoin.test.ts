@@ -28,6 +28,7 @@ describe('buildSearchUrl', () => {
       mileage: 'min-120000',
       regdate: '2014-max',
       locations: 'Rennes_35000__48.11_-1.68_10000',
+      owner_type: 'private',
       sort: 'time',
       order: 'desc',
       page: '2',
@@ -38,7 +39,7 @@ describe('buildSearchUrl', () => {
     const url = new URL(
       buildSearchUrl({ ...search, text: '', price_min: null, price_max: null, mileage_max: null, regdate_min: null }, null),
     );
-    expect([...url.searchParams.keys()]).toEqual(['category', 'sort', 'order']);
+    expect([...url.searchParams.keys()]).toEqual(['category', 'owner_type', 'sort', 'order']);
   });
 });
 
@@ -81,5 +82,8 @@ describe('matchesSearch', () => {
     expect(matchesSearch(listing('Toyota Yaris', 15000, {}), yaris)).toBe(false);
     expect(matchesSearch(listing('Toyota Yaris', 9000, { regdate: '2010' }), yaris)).toBe(false);
     expect(matchesSearch(listing('Toyota Yaris', 9000, { mileage: '180 000 km' }), yaris)).toBe(false);
+  });
+  it('drops professional sellers', () => {
+    expect(matchesSearch({ ...listing('Toyota Yaris', 9000, {}), seller: 'pro' }, yaris)).toBe(false);
   });
 });
