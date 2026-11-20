@@ -58,4 +58,8 @@ describe('isExcluded', () => {
     expect(isExcluded('Vends Clio POUR PIÈCES', ['pour pièces'])).toBe(true);
     expect(isExcluded('Clio très bon état', ['pour pièces', ' '])).toBe(false);
   });
+  it('matches whole words only', () => {
+    expect(isExcluded('Moteur HS, vendue en l’état', ['moteur hs'])).toBe(true);
+    expect(isExcluded('Yaris, climatisation automatique', ['auto'])).toBe(false);
+  });
 });

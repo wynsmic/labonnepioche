@@ -40,8 +40,11 @@ export function locationsFromUrl(url: string): string | null {
   }
 }
 
-/** True when the listing mentions one of the plan's disqualifying keywords. */
+/** True when the listing contains one of the plan's disqualifying expressions (whole words). */
 export function isExcluded(text: string, excludeKeywords: string[]): boolean {
-  const haystack = text.toLowerCase();
-  return excludeKeywords.some((k) => k.trim() && haystack.includes(k.trim().toLowerCase()));
+  const haystack = ` ${text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ')} `;
+  return excludeKeywords.some((k) => {
+    const needle = k.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+    return needle.length > 0 && haystack.includes(` ${needle} `);
+  });
 }

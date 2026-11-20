@@ -8,7 +8,11 @@ export const SearchSchema = z.object({
     .number()
     .int()
     .describe('Catégorie Leboncoin (2 = voitures, 3 = motos, 9 = ventes immobilières, 15 = informatique…)'),
-  text: z.string().describe('Mots-clés de recherche Leboncoin (peut être vide)'),
+  text: z
+    .string()
+    .describe(
+      'Mots-clés Leboncoin, courts : marque et modèle (« toyota yaris »), 1 à 3 mots. Pas de motorisation ni de détails : la recherche porte sur le texte des annonces et en raterait beaucoup',
+    ),
   price_min: z.number().int().nullable(),
   price_max: z.number().int().nullable(),
   mileage_min: z.number().int().nullable().describe('Kilométrage minimum (véhicules), sinon null'),
@@ -17,7 +21,9 @@ export const SearchSchema = z.object({
   regdate_max: z.number().int().nullable(),
   exclude_keywords: z
     .array(z.string())
-    .describe("Mots qui disqualifient une annonce (ex. « pour pièces », « moteur HS »)"),
+    .describe(
+      'Expressions qui disqualifient sans ambiguïté (« pour pièces », « moteur HS », « épave », « sans CT »). Jamais une caractéristique (carburant, boîte, équipement) : « automatique » écarterait aussi « climatisation automatique ». Les préférences vont dans les critères',
+    ),
 });
 export type Search = z.infer<typeof SearchSchema>;
 
