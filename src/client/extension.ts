@@ -1,7 +1,7 @@
 import { EXTENSION_ID } from '../shared/extension-id';
 import type { Ad } from '../shared/types';
 
-type FetchResult = { ok: true; ads: Ad[] } | { ok: false; reason: string };
+type FetchResult = { ok: true; ads: Ad[]; source: string | null; lists: string[] } | { ok: false; reason: string };
 
 function send<T>(message: unknown): Promise<T> {
   return new Promise((resolve, reject) => {

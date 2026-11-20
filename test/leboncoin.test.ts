@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildSearchUrl, isExcluded, locationsFromUrl } from '../src/shared/leboncoin';
+import { buildSearchUrl, isExcluded, locationsFromUrl, matchesSearch } from '../src/shared/leboncoin';
+import type { Ad } from '../src/shared/types';
 import type { Search } from '../src/shared/types';
 
 const search: Search = {
@@ -61,5 +62,24 @@ describe('isExcluded', () => {
   it('matches whole words only', () => {
     expect(isExcluded('Moteur HS, vendue en l’état', ['moteur hs'])).toBe(true);
     expect(isExcluded('Yaris, climatisation automatique', ['auto'])).toBe(false);
+  });
+});
+
+describe('matchesSearch', () => {
+  const listing = (title: string, price: number, attrs: Record<string, string>): Ad => ({
+    id: '1', url: 'u', title, body: '', price, date: null, city: null, zipcode: null, lat: null, lng: null,
+    image: null, seller: null, attributes: attrs,
+  });
+  const yaris = { ...search, text: 'toyota yaris' };
+
+  it('keeps listings of the searched model within the ranges', () => {
+    expect(matchesSearch(listing('Toyota Yaris hybride', 9000, { regdate: '2016', mileage: '98000 km' }), yaris)).toBe(true);
+    expect(matchesSearch(listing('Yaris 1.5', 9000, { brand: 'Toyota', regdate: '2016' }), yaris)).toBe(true);
+  });
+  it('drops other models and listings out of range', () => {
+    expect(matchesSearch(listing('Peugeot 208', 9000, {}), yaris)).toBe(false);
+    expect(matchesSearch(listing('Toyota Yaris', 15000, {}), yaris)).toBe(false);
+    expect(matchesSearch(listing('Toyota Yaris', 9000, { regdate: '2010' }), yaris)).toBe(false);
+    expect(matchesSearch(listing('Toyota Yaris', 9000, { mileage: '180 000 km' }), yaris)).toBe(false);
   });
 });

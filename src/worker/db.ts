@@ -273,3 +273,13 @@ export async function saveComparison(db: D1Database, briefId: string, adId: stri
 export async function resetAnalyses(db: D1Database, briefId: string): Promise<void> {
   await db.prepare('UPDATE ads SET analysis = NULL, analysis_attempts = 0 WHERE brief_id = ?').bind(briefId).run();
 }
+
+export async function deleteAds(db: D1Database, briefId: string, ids: string[]): Promise<void> {
+  for (let i = 0; i < ids.length; i += 90) {
+    const chunk = ids.slice(i, i + 90);
+    await db
+      .prepare(`DELETE FROM ads WHERE brief_id = ? AND id IN (${chunk.map(() => '?').join(',')})`)
+      .bind(briefId, ...chunk)
+      .run();
+  }
+}

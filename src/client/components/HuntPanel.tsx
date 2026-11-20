@@ -204,8 +204,13 @@ export function HuntPanel({
                     addLog(`Échec (${result.reason}).`);
                     break;
                   }
+                  if (result.source && !/searchData\.ads$/.test(result.source)) {
+                    addLog(`Attention : liste lue « ${result.source} » parmi ${result.lists.join(', ')}.`);
+                  }
                   const counts = await api.addAds(brief.id, search.label, result.ads);
-                  addLog(`${result.ads.length} annonces lues, ${counts.added} nouvelles, ${counts.excluded} écartées.`);
+                  addLog(
+                    `${result.ads.length} lues : ${counts.added} nouvelles, ${counts.offTarget} hors critères, ${counts.excluded} exclues.`,
+                  );
                   if (result.ads.length < 20) break; // last page
                   await sleep(PAUSE_MS[0] + Math.random() * (PAUSE_MS[1] - PAUSE_MS[0]));
                 }
@@ -235,6 +240,20 @@ export function HuntPanel({
           }
         >
           {busy === 'analyse' ? 'Analyse…' : `3. Analyser${pending ? ` (${pending})` : ''}`}
+        </button>
+        <button
+          type="button"
+          disabled={!!busy || !plan || detail.ads.length === 0}
+          title="Retire les annonces qui ne correspondent à aucune des recherches préparées (les favoris restent)"
+          onClick={() =>
+            run('clean', async () => {
+              const r = await api.clean(brief.id);
+              addLog(`${r.removed} annonces hors critères retirées.`);
+              await onChanged();
+            })
+          }
+        >
+          Retirer les hors critères
         </button>
         <button
           type="button"
@@ -304,7 +323,7 @@ export function HuntPanel({
 
       {log.length > 0 && (
         <ol className="log small" aria-live="polite">
-          {log.slice(-6).map((l, i) => (
+          {log.slice(-12).map((l, i) => (
             <li key={i}>{l}</li>
           ))}
         </ol>

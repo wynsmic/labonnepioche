@@ -3,7 +3,7 @@ import OpenAI from 'openai';
 import { Hono } from 'hono';
 import { deleteCookie, setCookie } from 'hono/cookie';
 import { z } from 'zod';
-import { isExcluded, locationsFromUrl } from '../shared/leboncoin';
+import { isExcluded, locationsFromUrl, matchesSearch } from '../shared/leboncoin';
 import { parseZone, toLocationsParam } from '../shared/zone';
 import { resolvePlaces } from './geo';
 import { MIN_COMPARABLES, compare } from '../shared/compare';
@@ -152,12 +152,13 @@ app.post('/briefs/:id/ads', async (c) => {
   const input = z
     .object({ searchLabel: z.string().max(200).nullable(), ads: z.array(AdSchema).max(200) })
     .parse(await c.req.json());
-  // Drop listings that contain the search's disqualifying keywords.
+  // Keep only listings that match the planned search and contain no disqualifying keyword.
   const current = await db.latestPlan(c.env.DB, brief.id);
-  const exclude = current?.plan.searches.find((s) => s.label === input.searchLabel)?.exclude_keywords ?? [];
-  const kept = input.ads.filter((ad: Ad) => !isExcluded(`${ad.title} ${ad.body}`, exclude));
+  const search = current?.plan.searches.find((s) => s.label === input.searchLabel);
+  const onTarget = search ? input.ads.filter((ad: Ad) => matchesSearch(ad, search)) : input.ads;
+  const kept = onTarget.filter((ad: Ad) => !isExcluded(`${ad.title} ${ad.body}`, search?.exclude_keywords ?? []));
   const counts = await db.upsertAds(c.env.DB, brief.id, input.searchLabel, kept);
-  return c.json({ ...counts, excluded: input.ads.length - kept.length });
+  return c.json({ ...counts, offTarget: input.ads.length - onTarget.length, excluded: onTarget.length - kept.length });
 });
 
 /** Analyses the next batch of listings; the page calls it until `remaining` is 0. */
@@ -180,6 +181,22 @@ app.post('/briefs/:id/analyse', async (c) => {
     }
   }
   return c.json({ analysed, remaining: await db.countToAnalyse(c.env.DB, brief.id) });
+});
+
+/** Removes collected listings that don't match their search (favourites are kept). */
+app.post('/briefs/:id/clean', async (c) => {
+  const briefId = c.req.param('id');
+  const current = await db.latestPlan(c.env.DB, briefId);
+  if (!current) return c.json({ removed: 0 });
+  const bySearch = new Map(current.plan.searches.map((s) => [s.label, s]));
+  const ads = await db.listAds(c.env.DB, briefId);
+  const off = ads.filter((ad) => {
+    if (ad.favorite) return false;
+    const search = ad.searchLabel ? bySearch.get(ad.searchLabel) : undefined;
+    return !search || !matchesSearch(ad, search);
+  });
+  await db.deleteAds(c.env.DB, briefId, off.map((a) => a.id));
+  return c.json({ removed: off.length });
 });
 
 app.post('/briefs/:id/reset-analyses', async (c) => {

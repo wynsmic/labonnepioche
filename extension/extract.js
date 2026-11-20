@@ -3,7 +3,7 @@
 // Reads the listings Leboncoin embeds in the page (Next.js `__NEXT_DATA__`).
 
 /**
- * @returns {{ ok: true, ads: import('../src/shared/types').Ad[] } | { ok: false, reason: string }}
+ * @returns {{ ok: true, ads: import('../src/shared/types').Ad[], source: string | null, lists: string[] } | { ok: false, reason: string }}
  */
 export function extractAdsFromPage() {
   const script = document.getElementById('__NEXT_DATA__');
@@ -18,32 +18,36 @@ export function extractAdsFromPage() {
   } catch {
     return { ok: false, reason: 'bad-json' };
   }
-  return { ok: true, ads: extractAds(data) };
+  // A page holds several lists of listings (results, "à la une", suggestions…): take the search
+  // results (`searchData.ads`), else the largest list, and say which one was used.
+  const lists = [];
+  collectLists(data, '', 0, lists);
+  if (!lists.length) return { ok: true, ads: [], source: null, lists: [] };
+  const chosen =
+    lists.find((l) => /(^|\.)searchData\.ads$/.test(l.path)) ??
+    lists.find((l) => /searchData/.test(l.path)) ??
+    [...lists].sort((x, y) => y.items.length - x.items.length)[0];
+  return {
+    ok: true,
+    ads: chosen.items.map(mapAd).filter(Boolean),
+    source: chosen.path,
+    lists: lists.map((l) => `${l.path} (${l.items.length})`),
+  };
 
   // --- helpers (kept inside so the function stays self-contained) ---
-  function extractAds(root) {
-    const list = findAdList(root, 0);
-    return list ? list.map(mapAd).filter(Boolean) : [];
-  }
 
-  /** The first array whose items look like listings (have list_id and subject). */
-  function findAdList(node, depth) {
-    if (!node || depth > 12 || typeof node !== 'object') return null;
+  /** Every array whose items look like listings (have list_id and subject), with its path. */
+  function collectLists(node, path, depth, out) {
+    if (!node || depth > 14 || typeof node !== 'object') return;
     if (Array.isArray(node)) {
       if (node.length && node.every((x) => x && typeof x === 'object' && 'list_id' in x && 'subject' in x)) {
-        return node;
+        out.push({ path, items: node });
+        return;
       }
-      for (const item of node) {
-        const found = findAdList(item, depth + 1);
-        if (found) return found;
-      }
-      return null;
+      node.forEach((item, i) => collectLists(item, `${path}[${i}]`, depth + 1, out));
+      return;
     }
-    for (const key of Object.keys(node)) {
-      const found = findAdList(node[key], depth + 1);
-      if (found) return found;
-    }
-    return null;
+    for (const key of Object.keys(node)) collectLists(node[key], path ? `${path}.${key}` : key, depth + 1, out);
   }
 
   function mapAd(raw) {

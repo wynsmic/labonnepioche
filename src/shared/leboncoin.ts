@@ -1,4 +1,4 @@
-import type { Search } from './types';
+import type { Ad, Search } from './types';
 
 const BASE = 'https://www.leboncoin.fr/recherche';
 
@@ -47,4 +47,35 @@ export function isExcluded(text: string, excludeKeywords: string[]): boolean {
     const needle = k.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
     return needle.length > 0 && haystack.includes(` ${needle} `);
   });
+}
+
+const normalize = (text: string) =>
+  text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+
+const firstNumber = (value: string | undefined) => {
+  const digits = value?.replace(/[^\d]/g, '') ?? '';
+  return digits ? Number(digits) : null;
+};
+
+/**
+ * Safety net on what Leboncoin returned: the listing must match the planned search (all its
+ * keywords in the title or make/model, price, year and mileage within range). Unknown values pass.
+ */
+export function matchesSearch(ad: Ad, search: Search): boolean {
+  const haystack = ` ${normalize(`${ad.title} ${ad.attributes.brand ?? ''} ${ad.attributes.model ?? ''}`)} `;
+  const words = normalize(search.text).split(' ').filter((w) => w.length > 1);
+  if (!words.every((w) => haystack.includes(` ${w} `) || haystack.includes(` ${w}`))) return false;
+  const within = (v: number | null, min: number | null, max: number | null) =>
+    v == null || ((min == null || v >= min) && (max == null || v <= max));
+  const year = firstNumber(ad.attributes.regdate);
+  return (
+    within(ad.price, search.price_min, search.price_max) &&
+    within(year ? Number(String(year).slice(0, 4)) : null, search.regdate_min, search.regdate_max) &&
+    within(firstNumber(ad.attributes.mileage), search.mileage_min, search.mileage_max)
+  );
 }
