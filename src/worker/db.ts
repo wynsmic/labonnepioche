@@ -142,13 +142,18 @@ export async function listAds(db: D1Database, briefId: string): Promise<StoredAd
   return results.map(toAd);
 }
 
-/** New listings are inserted; known ones get their fresh data (price may have dropped). */
+/**
+ * New listings are inserted; known ones get their fresh data. A changed price or text
+ * invalidates the analysis, which then runs again.
+ */
 export async function upsertAds(
   db: D1Database,
   briefId: string,
   searchLabel: string | null,
-  ads: Ad[],
+  input: Ad[],
 ): Promise<{ added: number; updated: number }> {
+  // The same listing can appear twice on a page (sponsored ads).
+  const ads = [...new Map(input.map((a) => [a.id, a])).values()];
   if (!ads.length) return { added: 0, updated: 0 };
   // D1 accepts at most 100 bound parameters per statement.
   const existing = new Set<string>();
@@ -160,21 +165,33 @@ export async function upsertAds(
       .all<{ id: string }>();
     results.forEach((r) => existing.add(r.id));
   }
-  await db.batch(
-    ads.map((ad) =>
-      existing.has(ad.id)
-        ? db.prepare('UPDATE ads SET data = ? WHERE brief_id = ? AND id = ?').bind(JSON.stringify(ad), briefId, ad.id)
-        : db
-            .prepare('INSERT INTO ads (brief_id, id, data, search_label) VALUES (?, ?, ?, ?)')
-            .bind(briefId, ad.id, JSON.stringify(ad), searchLabel),
-    ),
+  const upsert = db.prepare(
+    `INSERT INTO ads (brief_id, id, data, search_label) VALUES (?, ?, ?, ?)
+     ON CONFLICT (brief_id, id) DO UPDATE SET
+       analysis = CASE
+         WHEN json_extract(ads.data, '$.price') IS NOT json_extract(excluded.data, '$.price')
+           OR json_extract(ads.data, '$.body') IS NOT json_extract(excluded.data, '$.body')
+         THEN NULL ELSE ads.analysis END,
+       analysis_attempts = CASE
+         WHEN json_extract(ads.data, '$.price') IS NOT json_extract(excluded.data, '$.price')
+           OR json_extract(ads.data, '$.body') IS NOT json_extract(excluded.data, '$.body')
+         THEN 0 ELSE ads.analysis_attempts END,
+       data = excluded.data`,
   );
+  for (let i = 0; i < ads.length; i += 50) {
+    await db.batch(
+      ads.slice(i, i + 50).map((ad) => upsert.bind(briefId, ad.id, JSON.stringify(ad), searchLabel)),
+    );
+  }
   return { added: ads.length - existing.size, updated: existing.size };
 }
 
+/** Listings still to analyse: never analysed, visible, and not given up on. */
+const TO_ANALYSE = 'brief_id = ? AND analysis IS NULL AND hidden = 0 AND analysis_attempts < 3';
+
 export async function adsToAnalyse(db: D1Database, briefId: string, limit: number): Promise<Ad[]> {
   const { results } = await db
-    .prepare('SELECT data FROM ads WHERE brief_id = ? AND analysis IS NULL AND hidden = 0 ORDER BY first_seen LIMIT ?')
+    .prepare(`SELECT data FROM ads WHERE ${TO_ANALYSE} ORDER BY analysis_attempts, first_seen LIMIT ?`)
     .bind(briefId, limit)
     .all<{ data: string }>();
   return results.map((r) => JSON.parse(r.data) as Ad);
@@ -182,19 +199,28 @@ export async function adsToAnalyse(db: D1Database, briefId: string, limit: numbe
 
 export async function countToAnalyse(db: D1Database, briefId: string): Promise<number> {
   const row = await db
-    .prepare('SELECT COUNT(*) AS n FROM ads WHERE brief_id = ? AND analysis IS NULL AND hidden = 0')
+    .prepare(`SELECT COUNT(*) AS n FROM ads WHERE ${TO_ANALYSE}`)
     .bind(briefId)
     .first<{ n: number }>();
   return row?.n ?? 0;
 }
 
-export async function saveAnalyses(db: D1Database, briefId: string, analyses: Analysis[]): Promise<void> {
-  if (!analyses.length) return;
-  await db.batch(
-    analyses.map((a) =>
+/** Counts one attempt for every listing of the batch, and stores the analyses obtained. */
+export async function saveAnalyses(
+  db: D1Database,
+  briefId: string,
+  batchIds: string[],
+  analyses: Analysis[],
+): Promise<void> {
+  if (!batchIds.length) return;
+  await db.batch([
+    ...batchIds.map((id) =>
+      db.prepare('UPDATE ads SET analysis_attempts = analysis_attempts + 1 WHERE brief_id = ? AND id = ?').bind(briefId, id),
+    ),
+    ...analyses.map((a) =>
       db.prepare('UPDATE ads SET analysis = ? WHERE brief_id = ? AND id = ?').bind(JSON.stringify(a), briefId, a.id),
     ),
-  );
+  ]);
 }
 
 export async function setAdFlags(

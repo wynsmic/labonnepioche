@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Brief } from '../shared/types';
 import { ApiError, api, type BriefDetail } from './api';
 import { AdList } from './components/AdList';
@@ -43,9 +43,13 @@ export function App() {
     if (session.state === 'in') void loadBriefs().catch((e: Error) => setError(e.message));
   }, [session.state, loadBriefs]);
 
+  const currentId = useRef<string | null>(null);
+  currentId.current = selectedId;
   const reload = useCallback(async () => {
     if (!selectedId) return;
-    setDetail(await api.brief(selectedId));
+    const next = await api.brief(selectedId);
+    // Ignore a late answer for a hunt that is no longer shown.
+    if (currentId.current === selectedId) setDetail(next);
   }, [selectedId]);
 
   useEffect(() => {

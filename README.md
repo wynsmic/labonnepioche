@@ -27,8 +27,11 @@ l'onglet passe au premier plan pour que tu la résolves. Garde un usage personne
 2. **Charger l'extension non empaquetée** → choisis le dossier `extension/` de ce projet.
 3. Recharge la page de l'outil. L'avertissement « extension non détectée » disparaît.
 
-L'extension ne parle qu'aux pages `*.workers.dev` et `localhost`. Pour un domaine à toi, ajoute-le dans
-`externally_connectable.matches` de `extension/manifest.json`, puis recharge l'extension.
+**Après le déploiement**, remplace `https://*.workers.dev/*` dans `externally_connectable.matches` de
+`extension/manifest.json` par l'adresse exacte de ton outil (par exemple
+`https://affaires.ton-compte.workers.dev/*`), puis recharge l'extension. Sinon, n'importe quel site en
+`.workers.dev` pourrait lui demander d'ouvrir des recherches Leboncoin. L'extension n'ouvre que des pages de
+résultats (`/recherche`), jamais tes messages ou tes favoris.
 
 ## Déployer sur Cloudflare (gratuit)
 
@@ -46,6 +49,9 @@ npm run deploy
 ```
 
 L'adresse affichée (`https://affaires.<ton-compte>.workers.dev`) est ton outil.
+
+Choisis un mot de passe long : la connexion n'a pas de limite de tentatives. Changer `SESSION_SECRET`
+déconnecte toutes les sessions.
 
 Le plan gratuit des Workers limite le temps de calcul par requête. Si des erreurs 503 apparaissent pendant
 l'analyse, passe au plan Workers Paid (5 $/mois).

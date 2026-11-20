@@ -25,7 +25,10 @@ chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) =>
 
 async function fetchListings(url) {
   const parsed = new URL(url);
-  if (parsed.hostname !== 'www.leboncoin.fr') return { ok: false, reason: 'not-leboncoin' };
+  // Only Leboncoin search result pages: never account pages (messages, favourites…).
+  if (parsed.hostname !== 'www.leboncoin.fr' || parsed.pathname !== '/recherche') {
+    return { ok: false, reason: 'not-a-search' };
+  }
 
   const tab = await chrome.tabs.create({ url, active: false });
   try {
@@ -37,7 +40,12 @@ async function fetchListings(url) {
       const deadline = Date.now() + CAPTCHA_TIMEOUT_MS;
       while (!result.ok && Date.now() < deadline) {
         await sleep(3_000);
-        result = await extract(tab.id);
+        // The page reloads after the check: reading it mid-navigation can throw.
+        try {
+          result = await extract(tab.id);
+        } catch {
+          result = { ok: false, reason: 'captcha' };
+        }
       }
     }
     return result;

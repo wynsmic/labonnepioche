@@ -48,13 +48,19 @@ const BriefInput = z.object({
   locationsUrl: z.string().max(4000).optional(),
 });
 
+const ZONE_ERROR = 'Cette adresse ne contient pas de zone : copie l’URL d’une recherche Leboncoin réglée sur ta ville.';
+
+/** Empty input clears the zone; a URL without a Leboncoin area is an error (false). */
+function parseZone(url: string | undefined): string | null | false {
+  if (!url?.trim()) return null;
+  return locationsFromUrl(url) ?? false;
+}
+
 app.post('/briefs', async (c) => {
   const input = BriefInput.parse(await c.req.json());
-  const brief = await db.createBrief(c.env.DB, {
-    title: input.title,
-    prompt: input.prompt,
-    locations: input.locationsUrl ? locationsFromUrl(input.locationsUrl) : null,
-  });
+  const locations = parseZone(input.locationsUrl);
+  if (locations === false) return c.json({ error: ZONE_ERROR }, 400);
+  const brief = await db.createBrief(c.env.DB, { title: input.title, prompt: input.prompt, locations });
   return c.json(brief, 201);
 });
 
@@ -76,11 +82,13 @@ app.patch('/briefs/:id', async (c) => {
   const patch = BriefInput.partial()
     .extend({ note: z.string().max(500).optional() })
     .parse(await c.req.json());
+  const locations = patch.locationsUrl === undefined ? undefined : parseZone(patch.locationsUrl);
+  if (locations === false) return c.json({ error: ZONE_ERROR }, 400);
   const updated = await db.updateBrief(c.env.DB, brief, {
     title: patch.title,
     prompt: patch.prompt,
     note: patch.note,
-    locations: patch.locationsUrl === undefined ? undefined : locationsFromUrl(patch.locationsUrl),
+    locations,
   });
   return c.json(updated);
 });
@@ -135,12 +143,21 @@ app.post('/briefs/:id/analyse', async (c) => {
   const brief = await db.getBrief(c.env.DB, c.req.param('id'));
   if (!brief) return c.json({ error: 'Recherche introuvable' }, 404);
   const batch = await db.adsToAnalyse(c.env.DB, brief.id, ANALYSE_BATCH);
+  let analysed = 0;
   if (batch.length) {
     const current = await db.latestPlan(c.env.DB, brief.id);
-    const analyses = await analyseAds(c.env, brief.prompt, current?.plan ?? null, batch);
-    await db.saveAnalyses(c.env.DB, brief.id, analyses);
+    const ids = batch.map((a) => a.id);
+    try {
+      const analyses = await analyseAds(c.env, brief.prompt, current?.plan ?? null, batch);
+      await db.saveAnalyses(c.env.DB, brief.id, ids, analyses);
+      analysed = analyses.length;
+    } catch (err) {
+      // Count the attempt so a batch that always fails leaves the queue after 3 tries.
+      await db.saveAnalyses(c.env.DB, brief.id, ids, []);
+      throw err;
+    }
   }
-  return c.json({ analysed: batch.length, remaining: await db.countToAnalyse(c.env.DB, brief.id) });
+  return c.json({ analysed, remaining: await db.countToAnalyse(c.env.DB, brief.id) });
 });
 
 app.post('/briefs/:id/refine', async (c) => {
@@ -168,6 +185,8 @@ app.onError((err, c) => {
   if (err instanceof Anthropic.RateLimitError) return c.json({ error: 'Claude est surchargé, réessaie dans une minute' }, 503);
   if (err instanceof Anthropic.AuthenticationError) return c.json({ error: 'Clé API Anthropic invalide' }, 502);
   if (err instanceof Anthropic.APIError) return c.json({ error: `Erreur Claude (${err.status ?? '?'})` }, 502);
+  // Unreadable structured output, for instance.
+  if (err instanceof Anthropic.AnthropicError) return c.json({ error: 'Réponse de Claude illisible, réessaie' }, 502);
   console.error(err);
   return c.json({ error: 'Erreur interne' }, 500);
 });

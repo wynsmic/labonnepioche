@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { buildSearchUrl } from '../../shared/leboncoin';
 import type { Refine } from '../../shared/types';
 import { api, type BriefDetail } from '../api';
@@ -30,6 +30,13 @@ export function HuntPanel({
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [proposal, setProposal] = useState<Refine | null>(null);
   const [extOk, setExtOk] = useState<boolean | null>(null);
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, [brief.id]);
 
   useEffect(() => {
     setPrompt(brief.prompt);
@@ -39,7 +46,9 @@ export function HuntPanel({
 
   useEffect(() => {
     setSelected(new Set(plan?.plan.searches.map((_, i) => i) ?? []));
-  }, [plan?.createdAt, plan?.plan.searches]);
+    // Reset only when a new plan arrives, not on every reload.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan?.createdAt]);
 
   useEffect(() => {
     void extensionReady().then(setExtOk);
@@ -182,14 +191,17 @@ export function HuntPanel({
               const searches = plan!.plan.searches.filter((_, i) => selected.has(i));
               for (const search of searches) {
                 for (let page = 1; page <= PAGES_PER_SEARCH; page++) {
+                  if (!alive.current) return;
                   addLog(`Leboncoin : « ${search.label} », page ${page}…`);
                   const result = await fetchListings(buildSearchUrl(search, brief.locations, page));
                   if (!result.ok) {
-                    addLog(
-                      result.reason === 'captcha'
-                        ? 'Leboncoin demande une vérification : résous-la dans l’onglet, puis relance.'
-                        : `Échec (${result.reason}).`,
-                    );
+                    if (result.reason === 'captcha') {
+                      // Another search would hit the same check: stop the whole collection.
+                      addLog('Leboncoin a demandé une vérification qui n’a pas été résolue. Réessaie dans un moment.');
+                      await onChanged();
+                      return;
+                    }
+                    addLog(`Échec (${result.reason}).`);
                     break;
                   }
                   const counts = await api.addAds(brief.id, search.label, result.ads);
@@ -211,12 +223,12 @@ export function HuntPanel({
           onClick={() =>
             run('analyse', async () => {
               let remaining = pending;
-              while (remaining > 0) {
+              while (remaining > 0 && alive.current) {
                 addLog(`Claude analyse les annonces (${remaining} restantes)…`);
                 const r = await api.analyse(brief.id);
                 remaining = r.remaining;
+                if (!alive.current) return;
                 await onChanged();
-                if (r.analysed === 0) break;
               }
               addLog('Analyse terminée.');
             })

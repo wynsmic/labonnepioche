@@ -25,10 +25,7 @@ function client(env: Env): Anthropic {
   return new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 }
 
-/**
- * One structured-output request. Server tools (web search) may pause a long turn
- * (`pause_turn`): the assistant turn is sent back as is and the server resumes.
- */
+/** One structured-output request (no tools). */
 async function structured<S extends z.ZodType>(
   env: Env,
   schema: S,
@@ -36,7 +33,6 @@ async function structured<S extends z.ZodType>(
     system: Anthropic.Beta.BetaTextBlockParam[];
     user: string;
     effort: 'low' | 'medium' | 'high';
-    webSearch?: boolean;
   },
 ): Promise<z.infer<S>> {
   const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: 'user', content: params.user }];
@@ -49,9 +45,6 @@ async function structured<S extends z.ZodType>(
       system: params.system,
       messages,
       output_config: { effort: params.effort, format: betaZodOutputFormat(schema) },
-      ...(params.webSearch
-        ? { tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 8 } as const] }
-        : {}),
     });
     if (response.stop_reason === 'pause_turn') {
       messages.push({ role: 'assistant', content: response.content });
@@ -68,23 +61,60 @@ async function structured<S extends z.ZodType>(
 }
 
 const PREPARE_SYSTEM = `Tu aides un particulier à dénicher de vraies bonnes affaires sur Leboncoin (France).
-On te donne sa demande. Avant de chercher des annonces, renseigne-toi sur le web :
-- ce qu'il faut privilégier pour cette demande (modèles, versions, motorisations, années, marques fiables…) et ce qu'il faut fuir (défauts connus, séries à problèmes) ;
-- les prix de marché d'occasion réalistes, selon l'âge et le kilométrage ;
-- les pièges courants dans les annonces de ce type.
-Puis propose 3 à 8 recherches Leboncoin complémentaires qui couvrent la demande sans se recouvrir :
+On te donne sa demande et une recherche déjà faite sur le web. Résume cette recherche (champ research),
+déduis-en des critères concrets, puis propose 3 à 8 recherches Leboncoin complémentaires qui couvrent la demande sans se recouvrir :
 plusieurs gammes de prix et de kilométrage quand c'est pertinent, les modèles retenus, des mots-clés utiles.
 Pour une « affaire », vise sous le prix de marché sans tomber dans l'arnaque.
 Les champs non pertinents (kilométrage hors véhicules…) valent null. Réponds en français.`;
 
+const RESEARCH_SYSTEM = `Tu aides un particulier à dénicher de vraies bonnes affaires sur Leboncoin (France).
+Renseigne-toi sur le web pour sa demande : ce qu'il faut privilégier (modèles, versions, motorisations,
+années, marques fiables…), ce qu'il faut fuir (défauts connus, séries à problèmes), les prix de marché
+d'occasion réalistes selon l'âge et l'usure, et les pièges courants des annonces de ce type.
+Rédige une synthèse factuelle et chiffrée en français, sans proposer encore de recherches.`;
+
+/**
+ * Two steps: web research as plain text (web results come with citations, which structured
+ * output does not accept), then the plan built from that research.
+ */
 export async function preparePlan(env: Env, prompt: string): Promise<Plan> {
   if (env.MOCK_CLAUDE === '1') return mockPlan(prompt);
+  const research = await webResearch(env, prompt);
   return structured(env, PlanSchema, {
     system: [{ type: 'text', text: PREPARE_SYSTEM }],
-    user: `Ma demande :\n${prompt}`,
+    user: `Ma demande :\n${prompt}\n\nRecherche déjà faite sur le web :\n${research}`,
     effort: 'high',
-    webSearch: true,
   });
+}
+
+async function webResearch(env: Env, prompt: string): Promise<string> {
+  const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: 'user', content: `Ma demande :\n${prompt}` }];
+  for (let i = 0; i <= MAX_CONTINUATIONS; i++) {
+    const response = await client(env).beta.messages.create({
+      model: env.CLAUDE_MODEL,
+      max_tokens: 16000,
+      betas: [FALLBACK_BETA],
+      fallbacks: 'default',
+      system: RESEARCH_SYSTEM,
+      messages,
+      output_config: { effort: 'high' },
+      tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 8 }],
+    });
+    if (response.stop_reason === 'pause_turn') {
+      messages.push({ role: 'assistant', content: response.content });
+      continue;
+    }
+    if (response.stop_reason === 'refusal') {
+      throw new ClaudeError(`Claude a décliné la demande (${response.stop_details?.category ?? 'raison inconnue'})`);
+    }
+    const text = response.content
+      .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text')
+      .map((b) => b.text)
+      .join('');
+    if (!text.trim()) throw new ClaudeError('La recherche web n’a rien donné');
+    return text;
+  }
+  throw new ClaudeError('La recherche web n’a pas abouti');
 }
 
 const ANALYSE_SYSTEM = `Tu juges des annonces Leboncoin pour un particulier qui cherche une bonne affaire.

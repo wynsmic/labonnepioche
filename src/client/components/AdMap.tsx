@@ -21,16 +21,15 @@ const FRANCE: LatLngBoundsExpression = [
   [51.1, 8.2],
 ];
 
-function FitBounds({ ads }: { ads: StoredAd[] }) {
+function FitBounds({ ads, fitKey }: { ads: StoredAd[]; fitKey: string }) {
   const map = useMap();
-  const key = ads.map((a) => a.id).join(',');
   useEffect(() => {
     const points = ads.map((a) => [a.lat!, a.lng!] as [number, number]);
     if (points.length) map.fitBounds(points, { padding: [30, 30], maxZoom: 12 });
     else map.fitBounds(FRANCE);
-    // Refit only when the set of listings changes.
+    // Refit only when new listings arrive, not when one is hidden (keeps the user's zoom).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, map]);
+  }, [fitKey, map]);
   return null;
 }
 
@@ -45,6 +44,7 @@ export function AdMap({
 }) {
   // Hidden listings leave the map.
   const located = useMemo(() => ads.filter((a) => !a.hidden && a.lat != null && a.lng != null), [ads]);
+  const fitKey = useMemo(() => ads.map((a) => a.id).join(','), [ads]);
 
   return (
     <MapContainer className="map" bounds={FRANCE} scrollWheelZoom>
@@ -52,7 +52,7 @@ export function AdMap({
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      <FitBounds ads={located} />
+      <FitBounds ads={located} fitKey={fitKey} />
       {located.map((ad) => {
         const active = ad.id === highlighted;
         const color = VERDICT_COLOR[ad.analysis?.verdict ?? 'none'];
