@@ -1,0 +1,218 @@
+import type { Ad, Analysis, Brief, Plan, StoredAd } from '../shared/types';
+
+interface BriefRow {
+  id: string;
+  title: string;
+  prompt: string;
+  locations: string | null;
+  updated_at: string;
+}
+
+interface AdRow {
+  id: string;
+  data: string;
+  search_label: string | null;
+  first_seen: string;
+  analysis: string | null;
+  favorite: number;
+  hidden: number;
+}
+
+const toBrief = (r: BriefRow): Brief => ({
+  id: r.id,
+  title: r.title,
+  prompt: r.prompt,
+  locations: r.locations,
+  updatedAt: r.updated_at,
+});
+
+const toAd = (r: AdRow): StoredAd => ({
+  ...(JSON.parse(r.data) as Ad),
+  searchLabel: r.search_label,
+  firstSeen: r.first_seen,
+  favorite: r.favorite === 1,
+  hidden: r.hidden === 1,
+  analysis: r.analysis ? (JSON.parse(r.analysis) as Analysis) : null,
+});
+
+export async function listBriefs(db: D1Database): Promise<Brief[]> {
+  const { results } = await db
+    .prepare('SELECT id, title, prompt, locations, updated_at FROM briefs ORDER BY updated_at DESC')
+    .all<BriefRow>();
+  return results.map(toBrief);
+}
+
+export async function getBrief(db: D1Database, id: string): Promise<Brief | null> {
+  const row = await db
+    .prepare('SELECT id, title, prompt, locations, updated_at FROM briefs WHERE id = ?')
+    .bind(id)
+    .first<BriefRow>();
+  return row ? toBrief(row) : null;
+}
+
+export async function createBrief(
+  db: D1Database,
+  input: { title: string; prompt: string; locations: string | null },
+): Promise<Brief> {
+  const id = crypto.randomUUID();
+  await db.batch([
+    db.prepare('INSERT INTO briefs (id, title, prompt, locations) VALUES (?, ?, ?, ?)').bind(
+      id,
+      input.title,
+      input.prompt,
+      input.locations,
+    ),
+    db.prepare('INSERT INTO prompt_versions (id, brief_id, prompt, note) VALUES (?, ?, ?, ?)').bind(
+      crypto.randomUUID(),
+      id,
+      input.prompt,
+      'Première version',
+    ),
+  ]);
+  return (await getBrief(db, id))!;
+}
+
+/** Saves the changed fields; a changed prompt also becomes a new version. */
+export async function updateBrief(
+  db: D1Database,
+  brief: Brief,
+  patch: { title?: string; prompt?: string; locations?: string | null; note?: string },
+): Promise<Brief> {
+  const next = {
+    title: patch.title ?? brief.title,
+    prompt: patch.prompt ?? brief.prompt,
+    locations: patch.locations !== undefined ? patch.locations : brief.locations,
+  };
+  const statements = [
+    db
+      .prepare("UPDATE briefs SET title = ?, prompt = ?, locations = ?, updated_at = datetime('now') WHERE id = ?")
+      .bind(next.title, next.prompt, next.locations, brief.id),
+  ];
+  if (patch.prompt !== undefined && patch.prompt !== brief.prompt) {
+    statements.push(
+      db
+        .prepare('INSERT INTO prompt_versions (id, brief_id, prompt, note) VALUES (?, ?, ?, ?)')
+        .bind(crypto.randomUUID(), brief.id, patch.prompt, patch.note ?? null),
+    );
+  }
+  await db.batch(statements);
+  return (await getBrief(db, brief.id))!;
+}
+
+export async function deleteBrief(db: D1Database, id: string): Promise<void> {
+  // D1 enforces foreign keys, so children go first.
+  await db.batch([
+    db.prepare('DELETE FROM ads WHERE brief_id = ?').bind(id),
+    db.prepare('DELETE FROM plans WHERE brief_id = ?').bind(id),
+    db.prepare('DELETE FROM prompt_versions WHERE brief_id = ?').bind(id),
+    db.prepare('DELETE FROM briefs WHERE id = ?').bind(id),
+  ]);
+}
+
+export async function listVersions(db: D1Database, briefId: string) {
+  const { results } = await db
+    .prepare('SELECT id, prompt, note, created_at AS createdAt FROM prompt_versions WHERE brief_id = ? ORDER BY created_at DESC')
+    .bind(briefId)
+    .all<{ id: string; prompt: string; note: string | null; createdAt: string }>();
+  return results;
+}
+
+export async function savePlan(db: D1Database, briefId: string, prompt: string, plan: Plan): Promise<void> {
+  await db
+    .prepare('INSERT INTO plans (id, brief_id, prompt, plan) VALUES (?, ?, ?, ?)')
+    .bind(crypto.randomUUID(), briefId, prompt, JSON.stringify(plan))
+    .run();
+}
+
+export async function latestPlan(db: D1Database, briefId: string): Promise<{ plan: Plan; createdAt: string } | null> {
+  const row = await db
+    .prepare('SELECT plan, created_at FROM plans WHERE brief_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1')
+    .bind(briefId)
+    .first<{ plan: string; created_at: string }>();
+  return row ? { plan: JSON.parse(row.plan) as Plan, createdAt: row.created_at } : null;
+}
+
+export async function listAds(db: D1Database, briefId: string): Promise<StoredAd[]> {
+  const { results } = await db
+    .prepare(
+      'SELECT id, data, search_label, first_seen, analysis, favorite, hidden FROM ads WHERE brief_id = ? ORDER BY first_seen DESC',
+    )
+    .bind(briefId)
+    .all<AdRow>();
+  return results.map(toAd);
+}
+
+/** New listings are inserted; known ones get their fresh data (price may have dropped). */
+export async function upsertAds(
+  db: D1Database,
+  briefId: string,
+  searchLabel: string | null,
+  ads: Ad[],
+): Promise<{ added: number; updated: number }> {
+  if (!ads.length) return { added: 0, updated: 0 };
+  // D1 accepts at most 100 bound parameters per statement.
+  const existing = new Set<string>();
+  for (let i = 0; i < ads.length; i += 90) {
+    const chunk = ads.slice(i, i + 90);
+    const { results } = await db
+      .prepare(`SELECT id FROM ads WHERE brief_id = ? AND id IN (${chunk.map(() => '?').join(',')})`)
+      .bind(briefId, ...chunk.map((a) => a.id))
+      .all<{ id: string }>();
+    results.forEach((r) => existing.add(r.id));
+  }
+  await db.batch(
+    ads.map((ad) =>
+      existing.has(ad.id)
+        ? db.prepare('UPDATE ads SET data = ? WHERE brief_id = ? AND id = ?').bind(JSON.stringify(ad), briefId, ad.id)
+        : db
+            .prepare('INSERT INTO ads (brief_id, id, data, search_label) VALUES (?, ?, ?, ?)')
+            .bind(briefId, ad.id, JSON.stringify(ad), searchLabel),
+    ),
+  );
+  return { added: ads.length - existing.size, updated: existing.size };
+}
+
+export async function adsToAnalyse(db: D1Database, briefId: string, limit: number): Promise<Ad[]> {
+  const { results } = await db
+    .prepare('SELECT data FROM ads WHERE brief_id = ? AND analysis IS NULL AND hidden = 0 ORDER BY first_seen LIMIT ?')
+    .bind(briefId, limit)
+    .all<{ data: string }>();
+  return results.map((r) => JSON.parse(r.data) as Ad);
+}
+
+export async function countToAnalyse(db: D1Database, briefId: string): Promise<number> {
+  const row = await db
+    .prepare('SELECT COUNT(*) AS n FROM ads WHERE brief_id = ? AND analysis IS NULL AND hidden = 0')
+    .bind(briefId)
+    .first<{ n: number }>();
+  return row?.n ?? 0;
+}
+
+export async function saveAnalyses(db: D1Database, briefId: string, analyses: Analysis[]): Promise<void> {
+  if (!analyses.length) return;
+  await db.batch(
+    analyses.map((a) =>
+      db.prepare('UPDATE ads SET analysis = ? WHERE brief_id = ? AND id = ?').bind(JSON.stringify(a), briefId, a.id),
+    ),
+  );
+}
+
+export async function setAdFlags(
+  db: D1Database,
+  briefId: string,
+  adId: string,
+  flags: { favorite?: boolean; hidden?: boolean },
+): Promise<void> {
+  if (flags.favorite !== undefined) {
+    await db
+      .prepare('UPDATE ads SET favorite = ? WHERE brief_id = ? AND id = ?')
+      .bind(flags.favorite ? 1 : 0, briefId, adId)
+      .run();
+  }
+  if (flags.hidden !== undefined) {
+    await db
+      .prepare('UPDATE ads SET hidden = ? WHERE brief_id = ? AND id = ?')
+      .bind(flags.hidden ? 1 : 0, briefId, adId)
+      .run();
+  }
+}

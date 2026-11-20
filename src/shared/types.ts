@@ -1,0 +1,89 @@
+import { z } from 'zod';
+
+/** One Leboncoin search the plan asks to run. */
+export const SearchSchema = z.object({
+  label: z.string().describe('Nom court de la recherche, ex. « Corolla hybride < 120 000 km »'),
+  why: z.string().describe('Pourquoi cette recherche, en une phrase'),
+  category: z
+    .number()
+    .int()
+    .describe('Catégorie Leboncoin (2 = voitures, 3 = motos, 9 = ventes immobilières, 15 = informatique…)'),
+  text: z.string().describe('Mots-clés de recherche Leboncoin (peut être vide)'),
+  price_min: z.number().int().nullable(),
+  price_max: z.number().int().nullable(),
+  mileage_min: z.number().int().nullable().describe('Kilométrage minimum (véhicules), sinon null'),
+  mileage_max: z.number().int().nullable(),
+  regdate_min: z.number().int().nullable().describe('Année minimum de mise en circulation, sinon null'),
+  regdate_max: z.number().int().nullable(),
+  exclude_keywords: z
+    .array(z.string())
+    .describe("Mots qui disqualifient une annonce (ex. « pour pièces », « moteur HS »)"),
+});
+export type Search = z.infer<typeof SearchSchema>;
+
+/** What Claude returns when preparing a hunt. */
+export const PlanSchema = z.object({
+  research: z
+    .string()
+    .describe('Synthèse de la recherche préalable (marché, modèles à privilégier, prix de référence, pièges), en Markdown court'),
+  criteria: z.array(z.string()).describe('Critères concrets pour juger une annonce'),
+  searches: z.array(SearchSchema).describe('3 à 8 recherches Leboncoin complémentaires'),
+});
+export type Plan = z.infer<typeof PlanSchema>;
+
+export const VERDICTS = ['pepite', 'bonne_affaire', 'correct', 'cher', 'suspect', 'hors_sujet'] as const;
+export type Verdict = (typeof VERDICTS)[number];
+
+/** Claude's reading of one listing. */
+export const AnalysisSchema = z.object({
+  id: z.string(),
+  score: z.number().int().describe('0 à 100 : intérêt de l’affaire au regard de la demande'),
+  verdict: z.enum(VERDICTS),
+  market_price: z.number().int().nullable().describe('Prix de marché estimé, sinon null'),
+  summary: z.string().describe('L’annonce distillée en 2 ou 3 phrases : l’essentiel, sans le blabla du vendeur'),
+  positives: z.array(z.string()),
+  red_flags: z.array(z.string()),
+  questions: z.array(z.string()).describe('Questions à poser au vendeur'),
+});
+export type Analysis = z.infer<typeof AnalysisSchema>;
+
+export const AnalysesSchema = z.object({ analyses: z.array(AnalysisSchema) });
+
+export const RefineSchema = z.object({
+  prompt: z.string().describe('La demande réécrite, prête à l’emploi'),
+  rationale: z.string().describe('Ce qui a changé et pourquoi, en 2 ou 3 phrases'),
+});
+export type Refine = z.infer<typeof RefineSchema>;
+
+/** A listing as read from a Leboncoin results page (see extension/extract.js). */
+export interface Ad {
+  id: string;
+  url: string;
+  title: string;
+  body: string;
+  price: number | null;
+  date: string | null;
+  city: string | null;
+  zipcode: string | null;
+  lat: number | null;
+  lng: number | null;
+  image: string | null;
+  seller: 'pro' | 'private' | null;
+  attributes: Record<string, string>;
+}
+
+export interface StoredAd extends Ad {
+  searchLabel: string | null;
+  firstSeen: string;
+  favorite: boolean;
+  hidden: boolean;
+  analysis: Analysis | null;
+}
+
+export interface Brief {
+  id: string;
+  title: string;
+  prompt: string;
+  locations: string | null;
+  updatedAt: string;
+}
