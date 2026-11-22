@@ -6,11 +6,12 @@ Trouve les bonnes affaires sur Leboncoin avec une IA (GPT par défaut, ou Claude
    pièges), puis propose plusieurs recherches Leboncoin complémentaires (gammes de prix, kilométrages, mots-clés).
 2. **Récupérer** : l'extension Chrome ouvre ces recherches (particuliers uniquement : les vraies affaires ne
    viennent pas des professionnels) dans ton navigateur, lit les annonces affichées et les
-   envoie à l'outil. Les annonces qui contiennent un mot disqualifiant (« pour pièces »…) sont écartées.
+   envoie à l'outil. Les annonces hors critères ou qui contiennent un mot disqualifiant (« pour pièces »…)
+   sont écartées. La liste devient ce que Leboncoin montre maintenant : les anciennes annonces non revues
+   partent (sauf les favoris), celles revues à l'identique gardent leur analyse.
 3. **Analyser** : l’IA note chaque annonce (0–100, verdict, prix de marché), la résume, liste les signaux
    d'alerte et les questions à poser.
-4. **Affiner** : tu coches favoris et annonces masquées ; l’IA réécrit ta demande à partir de ces choix. Chaque
-   version de la demande est gardée.
+Chaque version de la demande est gardée ; un nouveau plan remet toutes les annonces à analyser.
 
 La liste ressemble à Leboncoin, un clic ouvre l'annonce sur Leboncoin, et la carte situe les annonces (les
 annonces masquées disparaissent de la carte, les favoris sont cerclés de jaune).

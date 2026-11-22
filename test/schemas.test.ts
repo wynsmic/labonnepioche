@@ -1,13 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { zodTextFormat } from 'openai/helpers/zod';
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
-import { AnalysesSchema, PlanSchema, RefineSchema } from '../src/shared/types';
+import { AnalysesSchema, PlanSchema } from '../src/shared/types';
 
 // Both providers must accept our schemas as strict JSON schemas.
 describe.each([
   ['plan', PlanSchema],
   ['analyses', AnalysesSchema],
-  ['refine', RefineSchema],
 ])('%s schema', (_name, schema) => {
   it('converts for OpenAI structured outputs', () => {
     const format = zodTextFormat(schema, 'result');

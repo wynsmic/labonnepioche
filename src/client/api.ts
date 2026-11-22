@@ -1,4 +1,4 @@
-import type { Ad, Brief, Plan, Refine, Search, StoredAd, Verification } from '../shared/types';
+import type { Ad, Brief, Plan, Search, StoredAd, Verification } from '../shared/types';
 
 export class ApiError extends Error {
   constructor(
@@ -42,14 +42,12 @@ export const api = {
   deleteBrief: (id: string) => call<{ ok: true }>('DELETE', `/briefs/${id}`),
   plan: (id: string) => call<{ plan: Plan; createdAt: string }>('POST', `/briefs/${id}/plan`),
   addAds: (id: string, searchLabel: string | null, ads: Ad[]) =>
-    call<{ added: number; updated: number; offTarget: number; excluded: number }>('POST', `/briefs/${id}/ads`, {
+    call<{ added: number; updated: number; seenAt: string; offTarget: number; excluded: number }>('POST', `/briefs/${id}/ads`, {
       searchLabel,
       ads,
     }),
   analyse: (id: string) => call<{ analysed: number; remaining: number }>('POST', `/briefs/${id}/analyse`),
-  clean: (id: string) => call<{ removed: number }>('POST', `/briefs/${id}/clean`),
-  resetAnalyses: (id: string) => call<{ ok: true }>('POST', `/briefs/${id}/reset-analyses`),
-  refine: (id: string) => call<Refine>('POST', `/briefs/${id}/refine`),
+  prune: (id: string, since: string) => call<{ removed: number }>('POST', `/briefs/${id}/prune`, { since }),
   /** Without candidates, uses national listings read in the last 3 days (409 when there are none). */
   verify: (id: string, adId: string, query: Search, candidates?: Ad[]) =>
     call<Verification>('POST', `/briefs/${id}/ads/${adId}/verify`, { query, candidates }),

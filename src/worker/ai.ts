@@ -2,12 +2,10 @@ import type { z } from 'zod';
 import {
   AnalysesSchema,
   PlanSchema,
-  RefineSchema,
   VerificationSchema,
   type Ad,
   type Analysis,
   type Plan,
-  type Refine,
 } from '../shared/types';
 import { ageInDays, numberFrom, type Comparison } from '../shared/compare';
 import { adjustPrice, describeCurve } from '../shared/depreciation';
@@ -204,29 +202,6 @@ export async function verifyAd(
     ]
       .filter(Boolean)
       .join('\n\n'),
-    effort: 'medium',
-  });
-}
-
-const REFINE_SYSTEM = `Tu aides à affiner une demande de recherche de bonnes affaires sur Leboncoin.
-On te donne la demande actuelle, ce que la personne a mis en favori et ce qu'elle a masqué.
-Déduis ses préférences implicites et réécris la demande pour qu'elle les dise explicitement
-(budget, critères, exclusions, priorités). Garde sa voix, reste concis. Réponds en français.`;
-
-export async function refinePrompt(
-  env: Env,
-  prompt: string,
-  favorites: Ad[],
-  hidden: Ad[],
-): Promise<Refine> {
-  if (env.MOCK_AI === '1') {
-    return { prompt: `${prompt}\n(affiné : privilégier les annonces de particuliers)`, rationale: 'Exemple hors ligne.' };
-  }
-  const describe = (ads: Ad[]) =>
-    ads.length ? ads.map((a) => `- ${a.title} · ${a.price ?? '?'} € · ${a.city ?? ''}`).join('\n') : '(aucune)';
-  return llm(env).structured(RefineSchema, {
-    system: REFINE_SYSTEM,
-    user: `Demande actuelle :\n${prompt}\n\nFavoris :\n${describe(favorites)}\n\nMasquées :\n${describe(hidden)}`,
     effort: 'medium',
   });
 }

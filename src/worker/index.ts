@@ -9,7 +9,7 @@ import { resolvePlaces } from './geo';
 import { comparables, compare } from '../shared/compare';
 import { SearchSchema, type Ad } from '../shared/types';
 import { SESSION_COOKIE, checkPassword, createSession, requireSession } from './auth';
-import { analyseAds, preparePlan, refinePrompt, verifyAd } from './ai';
+import { analyseAds, preparePlan, verifyAd } from './ai';
 import { AiError, llm, modelLabel } from './llm';
 import * as db from './db';
 import type { AppEnv } from './env';
@@ -128,6 +128,8 @@ app.post('/briefs/:id/plan', async (c) => {
   if (!brief) return c.json({ error: 'Recherche introuvable' }, 404);
   const plan = await preparePlan(c.env, brief.prompt);
   await db.savePlan(c.env.DB, brief.id, brief.prompt, plan);
+  // A new plan (new shortlist, new demand) makes every verdict stale.
+  await db.resetAnalyses(c.env.DB, brief.id);
   return c.json(await db.latestPlan(c.env.DB, brief.id));
 });
 
@@ -158,8 +160,9 @@ app.post('/briefs/:id/ads', async (c) => {
   const search = current?.plan.searches.find((s) => s.label === input.searchLabel);
   const onTarget = search ? input.ads.filter((ad: Ad) => matchesSearch(ad, search)) : input.ads;
   const kept = onTarget.filter((ad: Ad) => !isExcluded(`${ad.title} ${ad.body}`, search?.exclude_keywords ?? []));
-  const counts = await db.upsertAds(c.env.DB, brief.id, input.searchLabel, kept);
-  return c.json({ ...counts, offTarget: input.ads.length - onTarget.length, excluded: onTarget.length - kept.length });
+  const seenAt = new Date().toISOString();
+  const counts = await db.upsertAds(c.env.DB, brief.id, input.searchLabel, kept, seenAt);
+  return c.json({ ...counts, seenAt, offTarget: input.ads.length - onTarget.length, excluded: onTarget.length - kept.length });
 });
 
 /** Analyses the next batch of listings; the page calls it until `remaining` is 0. */
@@ -185,37 +188,14 @@ app.post('/briefs/:id/analyse', async (c) => {
 });
 
 /** Removes collected listings that don't match their search (favourites are kept). */
-app.post('/briefs/:id/clean', async (c) => {
-  const briefId = c.req.param('id');
-  const current = await db.latestPlan(c.env.DB, briefId);
-  if (!current) return c.json({ removed: 0 });
-  const bySearch = new Map(current.plan.searches.map((s) => [s.label, s]));
-  const ads = await db.listAds(c.env.DB, briefId);
-  const off = ads.filter((ad) => {
-    if (ad.favorite) return false;
-    const search = ad.searchLabel ? bySearch.get(ad.searchLabel) : undefined;
-    return !search || !matchesSearch(ad, search);
-  });
-  await db.deleteAds(c.env.DB, briefId, off.map((a) => a.id));
-  return c.json({ removed: off.length });
-});
-
-app.post('/briefs/:id/reset-analyses', async (c) => {
-  await db.resetAnalyses(c.env.DB, c.req.param('id'));
-  return c.json({ ok: true });
-});
-
-app.post('/briefs/:id/refine', async (c) => {
-  const brief = await db.getBrief(c.env.DB, c.req.param('id'));
-  if (!brief) return c.json({ error: 'Recherche introuvable' }, 404);
-  const ads = await db.listAds(c.env.DB, brief.id);
-  const proposal = await refinePrompt(
-    c.env,
-    brief.prompt,
-    ads.filter((a) => a.favorite).slice(0, 30),
-    ads.filter((a) => a.hidden).slice(0, 30),
-  );
-  return c.json(proposal);
+/**
+ * End of a complete collection: the list becomes what Leboncoin shows now. Listings not read
+ * again since `since` (sold, off the new plan, filtered out) go; favourites stay. Listings read
+ * again unchanged keep their analysis.
+ */
+app.post('/briefs/:id/prune', async (c) => {
+  const { since } = z.object({ since: z.string().datetime() }).parse(await c.req.json());
+  return c.json({ removed: await db.pruneUnseen(c.env.DB, c.req.param('id'), since) });
 });
 
 /**

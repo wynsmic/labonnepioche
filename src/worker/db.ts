@@ -164,6 +164,7 @@ export async function upsertAds(
   briefId: string,
   searchLabel: string | null,
   input: Ad[],
+  seenAt: string,
 ): Promise<{ added: number; updated: number }> {
   // The same listing can appear twice on a page (sponsored ads).
   const ads = [...new Map(input.map((a) => [a.id, a])).values()];
@@ -179,8 +180,10 @@ export async function upsertAds(
     results.forEach((r) => existing.add(r.id));
   }
   const upsert = db.prepare(
-    `INSERT INTO ads (brief_id, id, data, search_label, first_price) VALUES (?, ?, ?, ?, ?)
+    `INSERT INTO ads (brief_id, id, data, search_label, first_price, last_seen) VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT (brief_id, id) DO UPDATE SET
+       last_seen = excluded.last_seen,
+       search_label = excluded.search_label,
        analysis = CASE
          WHEN json_extract(ads.data, '$.price') IS NOT json_extract(excluded.data, '$.price')
            OR json_extract(ads.data, '$.body') IS NOT json_extract(excluded.data, '$.body')
@@ -197,7 +200,7 @@ export async function upsertAds(
   );
   for (let i = 0; i < ads.length; i += 50) {
     await db.batch(
-      ads.slice(i, i + 50).map((ad) => upsert.bind(briefId, ad.id, JSON.stringify(ad), searchLabel, ad.price)),
+      ads.slice(i, i + 50).map((ad) => upsert.bind(briefId, ad.id, JSON.stringify(ad), searchLabel, ad.price, seenAt)),
     );
   }
   return { added: ads.length - existing.size, updated: existing.size };
@@ -280,16 +283,6 @@ export async function resetAnalyses(db: D1Database, briefId: string): Promise<vo
   await db.prepare('UPDATE ads SET analysis = NULL, analysis_attempts = 0 WHERE brief_id = ?').bind(briefId).run();
 }
 
-export async function deleteAds(db: D1Database, briefId: string, ids: string[]): Promise<void> {
-  for (let i = 0; i < ids.length; i += 90) {
-    const chunk = ids.slice(i, i + 90);
-    await db
-      .prepare(`DELETE FROM ads WHERE brief_id = ? AND id IN (${chunk.map(() => '?').join(',')})`)
-      .bind(briefId, ...chunk)
-      .run();
-  }
-}
-
 export async function saveVerification(
   db: D1Database,
   briefId: string,
@@ -319,4 +312,13 @@ export async function putCachedSearch(db: D1Database, key: string, ads: Ad[], at
     // Housekeeping: nothing older than a week is worth keeping.
     db.prepare('DELETE FROM search_cache WHERE created_at < ?').bind(new Date(Date.now() - 7 * 86_400_000).toISOString()),
   ]);
+}
+
+/** Drops the listings a collection started at `since` did not read again (favourites stay). */
+export async function pruneUnseen(db: D1Database, briefId: string, since: string): Promise<number> {
+  const r = await db
+    .prepare('DELETE FROM ads WHERE brief_id = ? AND favorite = 0 AND (last_seen IS NULL OR last_seen < ?)')
+    .bind(briefId, since)
+    .run();
+  return r.meta.changes ?? 0;
 }

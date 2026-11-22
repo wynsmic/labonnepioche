@@ -101,12 +101,6 @@ export type Verification = z.infer<typeof VerificationSchema> & {
 
 export const AnalysesSchema = z.object({ analyses: z.array(AnalysisSchema) });
 
-export const RefineSchema = z.object({
-  prompt: z.string().describe('La demande réécrite, prête à l’emploi'),
-  rationale: z.string().describe('Ce qui a changé et pourquoi, en 2 ou 3 phrases'),
-});
-export type Refine = z.infer<typeof RefineSchema>;
-
 /** A listing as read from a Leboncoin results page (see extension/extract.js). */
 export interface Ad {
   id: string;
