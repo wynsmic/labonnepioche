@@ -24,15 +24,27 @@ describe('estimateAll', () => {
   });
 
   it('falls back to the AI market price with too few peers', () => {
-    const e = estimateAll([ad('x', 9000, '2020', '80 000 km')], new Map([['x', { market: 10000, newPrice: null }]]), 2026).get('x')!;
+    const e = estimateAll([ad('x', 9000, '2020', '80 000 km')], new Map([['x', { france: null, market: 10000, newPrice: null }]]), 2026).get('x')!;
     expect(e).toMatchObject({ basis: 'ia', discount: 10 });
   });
 
-  it('starts from the new price when peers are missing', () => {
-    const e = estimateAll([ad('x', 9000, '2020', '80 000 km')], new Map([['x', { market: 10000, newPrice: 25000 }]]), 2026).get('x')!;
+  it('prefers the AI market price to the new price', () => {
+    const e = estimateAll([ad('x', 9000, '2020', '80 000 km')], new Map([['x', { france: null, market: 10000, newPrice: 25000 }]]), 2026).get('x')!;
+    expect(e.basis).toBe('ia');
+  });
+
+  it('uses the national comparison over everything else', () => {
+    const all = [...peers, ad('x', 12000, '2020', '80 000 km')];
+    const e = estimateAll(all, new Map([['x', { france: { median: 15000, count: 8 }, market: 10000, newPrice: 25000 }]]), 2026).get('x')!;
+    expect(e).toMatchObject({ basis: 'france', discount: 20 });
+  });
+
+  it('from the new price, corrects only the mileage gap to normal', () => {
+    // 6.5 years at 13 000 km/year = 84 500 km: 80 000 km is about normal.
+    const e = estimateAll([ad('x', 9000, '2020', '80 000 km')], new Map([['x', { france: null, market: null, newPrice: 25000 }]]), 2026).get('x')!;
     expect(e.basis).toBe('neuf');
-    // 25 000 × 0.9 × 0.9^6.5 × e^(−0.2) ≈ 9 290
-    expect(e.expected).toBeGreaterThan(9200);
-    expect(e.expected).toBeLessThan(9400);
+    // 25 000 × 0.9 × 0.9^6.5 × e^(+0.011) ≈ 11 470
+    expect(e.expected).toBeGreaterThan(11300);
+    expect(e.expected).toBeLessThan(11600);
   });
 });

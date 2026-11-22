@@ -159,7 +159,7 @@ export function Benchmarks({
           </span>{' '}
           <span className="small muted">
             {estimate.discount > 0 ? 'sous le prix attendu' : 'au-dessus du prix attendu'}
-            {estimate.basis === 'ia' ? ' (IA)' : estimate.basis === 'neuf' ? ' (depuis le neuf)' : ''}
+            {{ france: ' (France)', annonces: '', ia: ' (IA)', neuf: ' (depuis le neuf, grossier)' }[estimate.basis]}
           </span>
           <span className="tip small" role="tooltip">
             {estimate.factors.map((f) => (

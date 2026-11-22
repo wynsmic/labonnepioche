@@ -69,7 +69,17 @@ export function AdList({
     () =>
       estimateAll(
         ads,
-        new Map(ads.map((a) => [a.id, { market: a.analysis?.market_price ?? null, newPrice: a.analysis?.new_price ?? null }])),
+        new Map(
+          ads.map((a) => [
+            a.id,
+            {
+              // Only comparisons adjusted to the listing's year and mileage are a fair reference.
+              france: a.comparison?.adjustedTo ? { median: a.comparison.median, count: a.comparison.count } : null,
+              market: a.analysis?.market_price ?? null,
+              newPrice: a.analysis?.new_price ?? null,
+            },
+          ]),
+        ),
       ),
     [ads],
   );

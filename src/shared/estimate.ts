@@ -9,15 +9,19 @@ import { PRIOR, adjustPrice, describeCurve, fitCurve } from './depreciation';
  *   the depreciation law (fitted on those listings when there are enough, see depreciation.ts),
  *   and to its equipment with the options rules;
  * - the median of those adjusted prices is its expected price.
- * With too few such listings: the AI's new price for the version, minus the average depreciation
- * (dealer exit, age, mileage) and the options rules; else the AI market estimate.
+ * Sources by reliability: the national comparison when "Vérifier" ran, else those collected
+ * listings, else the AI market estimate, else the AI new price minus average depreciation.
  */
 export interface Estimate {
   /** Positive = cheaper than expected (12 means 12 % under). */
   discount: number;
   expected: number;
-  /** annonces: collected listings of the same model; neuf: new price (AI) minus depreciation; ia: AI market estimate. */
-  basis: 'annonces' | 'neuf' | 'ia';
+  /**
+   * Most reliable first: france = national comparison of "Vérifier" (same engine, adjusted);
+   * annonces = collected listings of the same model; ia = AI market estimate for this listing;
+   * neuf = AI new price minus average depreciation (crude, last resort).
+   */
+  basis: 'france' | 'annonces' | 'ia' | 'neuf';
   peers: number;
   /** What moved the expected price, for the tooltip. */
   factors: string[];
@@ -81,12 +85,17 @@ const DEALER_EXIT = 0.9;
 /** Beyond this age the new price says little about the value. */
 const MAX_AGE_FROM_NEW = 15;
 
-export interface AiPrices {
+/** Average yearly mileage: the age law already assumes it, only the gap to it is corrected. */
+const NORMAL_KM_PER_YEAR = 13_000;
+
+export interface KnownPrices {
+  /** Median of the national comparison, brought to this listing's year and mileage. */
+  france: { median: number; count: number } | null;
   market: number | null;
   newPrice: number | null;
 }
 
-export function estimateAll(ads: Ad[], ai: Map<string, AiPrices>, now = new Date().getFullYear()): Map<string, Estimate> {
+export function estimateAll(ads: Ad[], ai: Map<string, KnownPrices>, now = new Date().getFullYear()): Map<string, Estimate> {
   const groupOf = (ad: Ad) => `${key(ad)}|${(ad.attributes.fuel ?? '').toLowerCase()}`;
   const usable = ads.filter((a) => a.price != null && a.price >= 500 && a.seller !== 'pro' && key(a));
   const groups = new Map<string, Ad[]>();
@@ -108,7 +117,13 @@ export function estimateAll(ads: Ad[], ai: Map<string, AiPrices>, now = new Date
     let expected: number;
     let basis: Estimate['basis'];
     const factors: string[] = [];
-    if (peers.length >= MIN_PEERS) {
+    const prices = ai.get(ad.id);
+    if (prices?.france) {
+      // Same number as the check's "vs médiane France": one market reference everywhere.
+      expected = prices.france.median;
+      basis = 'france';
+      factors.push(`Médiane de ${prices.france.count} annonces comparables en France, ramenées à cette année et ce kilométrage`);
+    } else if (peers.length >= MIN_PEERS) {
       const curve = curves.get(groupOf(ad))!;
       const adjusted = peers.map(
         (p) => (adjustPrice(p.price!, { year: yearOf(p), km: kmOf(p) }, to, curve) / options(p).factor) * opt.factor,
@@ -128,26 +143,26 @@ export function estimateAll(ads: Ad[], ai: Map<string, AiPrices>, now = new Date
         if (pct) factors.push(`${int.format(to.km)} km vs ${int.format(Math.round(medKm))} : ${pct > 0 ? '+' : ''}${pct} %`);
       }
       for (const h of opt.hits) factors.push(`${h.label} : ${h.pct > 0 ? '+' : ''}${h.pct} %`);
+    } else if (prices?.market) {
+      expected = prices.market;
+      basis = 'ia';
+      factors.push(`Peu d’annonces du même modèle : prix de marché de cette annonce estimé par l’IA`);
     } else {
-      const prices = ai.get(ad.id);
       const age = to.year ? Math.max(0, now - to.year + 0.5) : null;
-      if (prices?.newPrice && age != null && age <= MAX_AGE_FROM_NEW) {
-        // The new car brought to this listing's age and mileage with the market-average law.
-        const ageFactor = Math.exp(PRIOR.perYear * age);
-        const kmFactor = to.km != null ? Math.exp((PRIOR.per10kKm * to.km) / 10_000) : 1;
-        expected = prices.newPrice * DEALER_EXIT * ageFactor * kmFactor * opt.factor;
-        basis = 'neuf';
-        const pct = (f: number) => `${Math.round((f - 1) * 100)} %`;
-        factors.push(`Peu d’annonces du même modèle : on part du prix neuf (estimé par l’IA) ${int.format(prices.newPrice)} €`);
-        factors.push(`Sortie de concession : ${pct(DEALER_EXIT)}`);
-        factors.push(`${Math.floor(age)} ans : ${pct(ageFactor)}`);
-        if (to.km != null) factors.push(`${int.format(to.km)} km : ${pct(kmFactor)}`);
-        for (const h of opt.hits) factors.push(`${h.label} : ${h.pct > 0 ? '+' : ''}${h.pct} %`);
-      } else if (prices?.market) {
-        expected = prices.market;
-        basis = 'ia';
-        factors.push(`Peu d’annonces du même modèle : prix de marché estimé par l’IA (${int.format(prices.market)} €)`);
-      } else continue;
+      if (!prices?.newPrice || age == null || age > MAX_AGE_FROM_NEW) continue;
+      // The new car brought to this age with the market-average law, which already assumes a
+      // normal mileage: only the gap to that mileage is corrected.
+      const ageFactor = Math.exp(PRIOR.perYear * age);
+      const kmGap = to.km != null ? to.km - age * NORMAL_KM_PER_YEAR : 0;
+      const kmFactor = Math.exp((PRIOR.per10kKm * kmGap) / 10_000);
+      expected = prices.newPrice * DEALER_EXIT * ageFactor * kmFactor * opt.factor;
+      basis = 'neuf';
+      const pct = (f: number) => `${Math.round((f - 1) * 100)} %`;
+      factors.push(`Estimation grossière depuis le prix neuf (IA) ${int.format(prices.newPrice)} €`);
+      factors.push(`Sortie de concession : ${pct(DEALER_EXIT)}`);
+      factors.push(`${Math.floor(age)} ans : ${pct(ageFactor)}`);
+      if (kmGap) factors.push(`${int.format(Math.abs(Math.round(kmGap)))} km ${kmGap > 0 ? 'de plus' : 'de moins'} que la normale : ${pct(kmFactor)}`);
+      for (const h of opt.hits) factors.push(`${h.label} : ${h.pct > 0 ? '+' : ''}${h.pct} %`);
     }
     factors.push(`Prix attendu ≈ ${int.format(Math.round(expected / 50) * 50)} €`);
     out.set(ad.id, {
