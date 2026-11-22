@@ -69,6 +69,8 @@ Fraîcheur (champ en_ligne_depuis_jours) : une vraie pépite part en quelques he
 - Plus de 3 jours en ligne avec un prix très bas : jamais « pepite » ; c'est un signal d'alerte
   (défaut caché, prix d'appel, arnaque ou annonce déjà vendue) à mentionner dans red_flags.
 - Plus de 14 jours : le marché l'a probablement jugée trop chère ou problématique ; dis-le.
+Prix : donne toujours market_price (valeur de marché de CETTE annonce) et, pour un véhicule, new_price
+(prix catalogue neuf de la version à son année, options courantes), même approximatifs.
 Rends exactement une analyse par annonce reçue, avec son id.`;
 
 function formatShortlist(plan: Plan): string {
@@ -283,6 +285,7 @@ function mockAnalysis(ad: Ad): Analysis {
     score,
     verdict: score > 80 ? 'pepite' : score > 60 ? 'bonne_affaire' : score > 35 ? 'correct' : 'cher',
     market_price: ad.price ? Math.round(ad.price * 1.1) : null,
+    new_price: ad.price ? Math.round(ad.price * 2.2) : null,
     summary: `Exemple hors ligne : ${ad.title}.`,
     positives: ['Annonce détaillée'],
     red_flags: score < 30 ? ['Prix au-dessus du marché'] : [],

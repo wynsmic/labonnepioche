@@ -1,6 +1,6 @@
 import { numberFrom } from './compare';
 import type { Ad } from './types';
-import { adjustPrice, describeCurve, fitCurve } from './depreciation';
+import { PRIOR, adjustPrice, describeCurve, fitCurve } from './depreciation';
 
 /**
  * Quick estimate of the discount of a listing against its expected market price, with average
@@ -9,13 +9,15 @@ import { adjustPrice, describeCurve, fitCurve } from './depreciation';
  *   the depreciation law (fitted on those listings when there are enough, see depreciation.ts),
  *   and to its equipment with the options rules;
  * - the median of those adjusted prices is its expected price.
- * Falls back to the AI market estimate when too few comparable listings were collected.
+ * With too few such listings: the AI's new price for the version, minus the average depreciation
+ * (dealer exit, age, mileage) and the options rules; else the AI market estimate.
  */
 export interface Estimate {
   /** Positive = cheaper than expected (12 means 12 % under). */
   discount: number;
   expected: number;
-  basis: 'annonces' | 'ia';
+  /** annonces: collected listings of the same model; neuf: new price (AI) minus depreciation; ia: AI market estimate. */
+  basis: 'annonces' | 'neuf' | 'ia';
   peers: number;
   /** What moved the expected price, for the tooltip. */
   factors: string[];
@@ -74,7 +76,17 @@ function median(values: number[]): number {
 const int = new Intl.NumberFormat('fr-FR');
 
 /** Estimates for every listing, keyed by id (peers = the other collected listings of the same model and fuel). */
-export function estimateAll(ads: Ad[], marketByAi: Map<string, number | null>): Map<string, Estimate> {
+/** A new car loses about this much the day it becomes used (dealer exit). */
+const DEALER_EXIT = 0.9;
+/** Beyond this age the new price says little about the value. */
+const MAX_AGE_FROM_NEW = 15;
+
+export interface AiPrices {
+  market: number | null;
+  newPrice: number | null;
+}
+
+export function estimateAll(ads: Ad[], ai: Map<string, AiPrices>, now = new Date().getFullYear()): Map<string, Estimate> {
   const groupOf = (ad: Ad) => `${key(ad)}|${(ad.attributes.fuel ?? '').toLowerCase()}`;
   const usable = ads.filter((a) => a.price != null && a.price >= 500 && a.seller !== 'pro' && key(a));
   const groups = new Map<string, Ad[]>();
@@ -117,11 +129,25 @@ export function estimateAll(ads: Ad[], marketByAi: Map<string, number | null>): 
       }
       for (const h of opt.hits) factors.push(`${h.label} : ${h.pct > 0 ? '+' : ''}${h.pct} %`);
     } else {
-      const ai = marketByAi.get(ad.id);
-      if (!ai) continue;
-      expected = ai;
-      basis = 'ia';
-      factors.push(`Peu d’annonces du même modèle : prix de marché estimé par l’IA (${int.format(ai)} €)`);
+      const prices = ai.get(ad.id);
+      const age = to.year ? Math.max(0, now - to.year + 0.5) : null;
+      if (prices?.newPrice && age != null && age <= MAX_AGE_FROM_NEW) {
+        // The new car brought to this listing's age and mileage with the market-average law.
+        const ageFactor = Math.exp(PRIOR.perYear * age);
+        const kmFactor = to.km != null ? Math.exp((PRIOR.per10kKm * to.km) / 10_000) : 1;
+        expected = prices.newPrice * DEALER_EXIT * ageFactor * kmFactor * opt.factor;
+        basis = 'neuf';
+        const pct = (f: number) => `${Math.round((f - 1) * 100)} %`;
+        factors.push(`Peu d’annonces du même modèle : on part du prix neuf (estimé par l’IA) ${int.format(prices.newPrice)} €`);
+        factors.push(`Sortie de concession : ${pct(DEALER_EXIT)}`);
+        factors.push(`${Math.floor(age)} ans : ${pct(ageFactor)}`);
+        if (to.km != null) factors.push(`${int.format(to.km)} km : ${pct(kmFactor)}`);
+        for (const h of opt.hits) factors.push(`${h.label} : ${h.pct > 0 ? '+' : ''}${h.pct} %`);
+      } else if (prices?.market) {
+        expected = prices.market;
+        basis = 'ia';
+        factors.push(`Peu d’annonces du même modèle : prix de marché estimé par l’IA (${int.format(prices.market)} €)`);
+      } else continue;
     }
     factors.push(`Prix attendu ≈ ${int.format(Math.round(expected / 50) * 50)} €`);
     out.set(ad.id, {

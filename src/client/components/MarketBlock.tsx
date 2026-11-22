@@ -23,13 +23,17 @@ export function MarketBlock({ ad, estimate }: { ad: StoredAd; estimate: Estimate
           <tr>
             <th>Règles moyennes</th>
             <td>
-              {estimate?.basis === 'annonces' ? (
+              {estimate && estimate.basis !== 'ia' ? (
                 <>
                   {euro.format(Math.round(estimate.expected / 50) * 50)} <Diff price={ad.price} value={estimate.expected} />{' '}
-                  <span className="muted">({estimate.peers} annonces collectées)</span>
+                  <span className="muted">
+                    {estimate.basis === 'annonces'
+                      ? `(${estimate.peers} annonces collectées)`
+                      : `(prix neuf ${ad.analysis?.new_price != null ? euro.format(ad.analysis.new_price) : ''} − décote)`}
+                  </span>
                 </>
               ) : (
-                <span className="muted">pas assez d’annonces du même modèle</span>
+                <span className="muted">après analyse (prix neuf − décote)</span>
               )}
             </td>
           </tr>

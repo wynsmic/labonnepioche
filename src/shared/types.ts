@@ -65,7 +65,16 @@ export const AnalysisSchema = z.object({
   id: z.string(),
   score: z.number().int().describe('0 à 100 : intérêt de l’affaire au regard de la demande'),
   verdict: z.enum(VERDICTS),
-  market_price: z.number().int().nullable().describe('Prix de marché estimé, sinon null'),
+  market_price: z
+    .number()
+    .int()
+    .nullable()
+    .describe('Prix de marché estimé pour CETTE annonce (année, km, version, état) ; null seulement si l’objet est impossible à identifier'),
+  new_price: z
+    .number()
+    .int()
+    .nullable()
+    .describe('Prix catalogue neuf de cette version à son année de sortie, en euros ; null si inconnu ou si ce n’est pas un véhicule'),
   summary: z.string().describe('L’annonce distillée en 2 ou 3 phrases : l’essentiel, sans le blabla du vendeur'),
   positives: z.array(z.string()),
   red_flags: z.array(z.string()),

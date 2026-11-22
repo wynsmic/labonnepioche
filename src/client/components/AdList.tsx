@@ -66,7 +66,11 @@ export function AdList({
   const [onlyFavorites, setOnlyFavorites] = useState(false);
 
   const estimates = useMemo(
-    () => estimateAll(ads, new Map(ads.map((a) => [a.id, a.analysis?.market_price ?? null]))),
+    () =>
+      estimateAll(
+        ads,
+        new Map(ads.map((a) => [a.id, { market: a.analysis?.market_price ?? null, newPrice: a.analysis?.new_price ?? null }])),
+      ),
     [ads],
   );
 
