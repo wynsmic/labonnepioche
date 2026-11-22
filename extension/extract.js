@@ -73,6 +73,8 @@ export function extractAdsFromPage() {
       lng: typeof loc.lng === 'number' ? loc.lng : null,
       image: images.thumb_url ?? (Array.isArray(images.urls_thumb) ? images.urls_thumb[0] : null) ?? images.small_url ?? null,
       seller: raw.owner && raw.owner.type ? (raw.owner.type === 'pro' ? 'pro' : 'private') : null,
+      sellerId: raw.owner && raw.owner.user_id ? String(raw.owner.user_id) : null,
+      sellerName: raw.owner && raw.owner.name ? String(raw.owner.name) : null,
       attributes,
     };
   }

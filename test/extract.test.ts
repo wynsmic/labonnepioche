@@ -17,7 +17,7 @@ const nextData = {
             url: 'https://www.leboncoin.fr/ad/voitures/2861234567',
             location: { city: 'Rennes', zipcode: '35000', lat: 48.11, lng: -1.68 },
             images: { thumb_url: 'https://img.leboncoin.fr/thumb.jpg' },
-            owner: { type: 'private' },
+            owner: { type: 'private', user_id: 'b29840b3-1ee2-4e16-86dd-abf9d2529b56', name: 'Jean' },
             attributes: [
               { key: 'mileage', value: '98000', value_label: '98000 km' },
               { key: 'regdate', value: '2016', value_label: '2016' },
@@ -65,6 +65,8 @@ describe('extractAdsFromPage', () => {
       lng: -1.68,
       image: 'https://img.leboncoin.fr/thumb.jpg',
       seller: 'private',
+      sellerId: 'b29840b3-1ee2-4e16-86dd-abf9d2529b56',
+      sellerName: 'Jean',
       attributes: { mileage: '98000 km', regdate: '2016', fuel: 'Hybride' },
     });
     expect(result.ads[1]).toMatchObject({
@@ -73,6 +75,8 @@ describe('extractAdsFromPage', () => {
       price: null,
       lat: null,
       seller: 'pro',
+      sellerId: null,
+      sellerName: null,
     });
   });
 

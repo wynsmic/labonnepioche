@@ -201,3 +201,17 @@ details.shortlist > summary { cursor: pointer; }
 }
 button.link { background: none; border: 0; padding: 0; min-height: 0; color: var(--accent); text-decoration: underline; cursor: pointer; }
 .required { display: block; color: var(--ink); }
+
+.notes { list-style: none; margin: 2px 0 0; padding: 0; display: grid; gap: 1px; }
+.notes li { padding-left: 1.3em; text-indent: -1.3em; }
+.notes li::before { display: inline-block; width: 1.3em; text-indent: 0; font-weight: 700; }
+.note-plus::before { content: '✓'; color: var(--v-pepite); }
+.note-flag { color: var(--v-suspect); }
+.note-flag::before { content: '⚠'; }
+.note-ask { color: var(--muted); }
+.note-ask::before { content: '?'; }
+
+.seller-ok { color: var(--v-pepite); }
+.seller-attention { color: var(--v-ok); font-weight: 600; }
+.seller-suspect { color: var(--v-suspect); font-weight: 700; }
+.seller-pill { border-radius: 99px; padding: 1px 8px; font-size: 12px; font-weight: 700; border: 1px solid currentColor; }

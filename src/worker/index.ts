@@ -8,6 +8,7 @@ import { parseZone, toLocationsParam } from '../shared/zone';
 import { resolvePlaces } from './geo';
 import { comparables, compare } from '../shared/compare';
 import { estimateAll } from '../shared/estimate';
+import { SellerProfileSchema, assessSeller, profileUrl } from '../shared/seller';
 import { SearchSchema, type Ad } from '../shared/types';
 import { SESSION_COOKIE, checkPassword, createSession, requireSession } from './auth';
 import { analyseAds, preparePlan, verifyAd } from './ai';
@@ -147,6 +148,8 @@ const AdSchema = z.object({
   lng: z.number().nullable(),
   image: z.string().max(1000).nullable(),
   seller: z.enum(['pro', 'private']).nullable(),
+  sellerId: z.string().max(80).nullable().optional(),
+  sellerName: z.string().max(200).nullable().optional(),
   attributes: z.record(z.string(), z.string()),
 });
 
@@ -255,10 +258,30 @@ app.post('/briefs/:id/ads/:adId/verify', async (c) => {
   const { kept } = comparables(ad, candidates, exclude);
   // Saved first: the price comparison stays useful even if the model call fails.
   if (comparison) await db.saveComparison(c.env.DB, brief.id, ad.id, comparison);
-  const result = await verifyAd(c.env, brief.prompt, current?.plan ?? null, ad, comparison, comparison ? kept : []);
+  const stored = (await db.listAds(c.env.DB, brief.id)).find((a) => a.id === ad.id);
+  const result = await verifyAd(
+    c.env,
+    brief.prompt,
+    current?.plan ?? null,
+    ad,
+    comparison,
+    comparison ? kept : [],
+    stored?.sellerCheck ?? null,
+  );
   const verification = { ...result, at, searchedAt, comparables: comparison?.count ?? 0, match: comparison?.match ?? null };
   await db.saveVerification(c.env.DB, brief.id, ad.id, comparison, verification);
   return c.json(verification);
+});
+
+/** Seller profile read by the extension for a striking deal: judged with average rules, stored. */
+app.post('/briefs/:id/ads/:adId/seller', async (c) => {
+  const briefId = c.req.param('id');
+  const ad = await db.getAd(c.env.DB, briefId, c.req.param('adId'));
+  if (!ad?.sellerId) return c.json({ error: 'Vendeur inconnu pour cette annonce (relance « Récupérer »)' }, 404);
+  const profile = SellerProfileSchema.parse(await c.req.json());
+  const check = assessSeller(profile, profileUrl(ad.sellerId), ad.title);
+  await db.saveSellerCheck(c.env.DB, briefId, ad.id, check);
+  return c.json(check);
 });
 
 app.patch('/briefs/:id/ads/:adId', async (c) => {

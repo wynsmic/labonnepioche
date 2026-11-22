@@ -1,4 +1,5 @@
 import type { Comparison } from '../shared/compare';
+import type { SellerCheck } from '../shared/seller';
 import type { Ad, Analysis, Brief, Plan, StoredAd, Verification } from '../shared/types';
 
 interface BriefRow {
@@ -21,6 +22,7 @@ interface AdRow {
   first_price: number | null;
   comparison: string | null;
   verification: string | null;
+  seller_check: string | null;
 }
 
 const toBrief = (r: BriefRow): Brief => ({
@@ -39,6 +41,7 @@ const toAd = (r: AdRow): StoredAd => ({
   firstPrice: r.first_price,
   comparison: r.comparison ? (JSON.parse(r.comparison) as Comparison) : null,
   verification: r.verification ? (JSON.parse(r.verification) as Verification) : null,
+  sellerCheck: r.seller_check ? (JSON.parse(r.seller_check) as SellerCheck) : null,
   favorite: r.favorite === 1,
   hidden: r.hidden === 1,
   analysis: r.analysis ? (JSON.parse(r.analysis) as Analysis) : null,
@@ -148,7 +151,7 @@ export async function latestPlan(db: D1Database, briefId: string): Promise<{ pla
 export async function listAds(db: D1Database, briefId: string): Promise<StoredAd[]> {
   const { results } = await db
     .prepare(
-      'SELECT id, data, search_label, first_seen, analysis, favorite, hidden, first_price, comparison, verification FROM ads WHERE brief_id = ? ORDER BY first_seen DESC',
+      'SELECT id, data, search_label, first_seen, analysis, favorite, hidden, first_price, comparison, verification, seller_check FROM ads WHERE brief_id = ? ORDER BY first_seen DESC',
     )
     .bind(briefId)
     .all<AdRow>();
@@ -322,4 +325,8 @@ export async function pruneUnseen(db: D1Database, briefId: string, since: string
     .bind(briefId, since, ...keepLabels)
     .run();
   return r.meta.changes ?? 0;
+}
+
+export async function saveSellerCheck(db: D1Database, briefId: string, adId: string, check: SellerCheck): Promise<void> {
+  await db.prepare('UPDATE ads SET seller_check = ? WHERE brief_id = ? AND id = ?').bind(JSON.stringify(check), briefId, adId).run();
 }

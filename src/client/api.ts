@@ -1,3 +1,4 @@
+import type { SellerCheck } from '../shared/seller';
 import type { Ad, Brief, Plan, Search, StoredAd, Verification } from '../shared/types';
 
 export class ApiError extends Error {
@@ -52,6 +53,13 @@ export const api = {
   /** Without candidates, uses national listings read in the last 3 days (409 when there are none). */
   verify: (id: string, adId: string, query: Search, candidates?: Ad[]) =>
     call<Verification>('POST', `/briefs/${id}/ads/${adId}/verify`, { query, candidates }),
+  sellerCheck: (id: string, adId: string, profile: { memberSince: string | null; totalAds: number | null; badges: string[]; ads: unknown[] }) =>
+    call<SellerCheck>('POST', `/briefs/${id}/ads/${adId}/seller`, {
+      memberSince: profile.memberSince,
+      totalAds: profile.totalAds,
+      badges: profile.badges,
+      ads: profile.ads,
+    }),
   flagAd: (id: string, adId: string, flags: { favorite?: boolean; hidden?: boolean }) =>
     call<{ ok: true }>('PATCH', `/briefs/${id}/ads/${adId}`, flags),
 };

@@ -10,6 +10,7 @@ import {
 import { ageInDays, numberFrom, type Comparison } from '../shared/compare';
 import { adjustPrice, describeCurve } from '../shared/depreciation';
 import type { Estimate } from '../shared/estimate';
+import type { SellerCheck } from '../shared/seller';
 import { llm, type Env } from './llm';
 
 const PREPARE_SYSTEM = `Tu aides un particulier à dénicher de vraies bonnes affaires sur Leboncoin (France).
@@ -67,8 +68,9 @@ Règle principale : seuls les choix de la shortlist comptent (modèle ET version
 Pour chaque annonce : note son intérêt de 0 à 100 au regard de la demande et du prix de marché,
 choisis un verdict (pepite = affaire exceptionnelle et crédible, bonne_affaire, correct, cher,
 suspect = prix ou texte qui font craindre une arnaque ou un vice caché, hors_sujet),
-distille l'annonce en 2 ou 3 phrases utiles, liste les points forts, les signaux d'alerte
-et les questions à poser au vendeur. Sois concret et sceptique. Réponds en français.
+distille l'annonce en une phrase courte, puis les points forts, les signaux d'alerte et les questions à
+poser au vendeur en listes télégraphiques (3 éléments au plus chacune, quelques mots, pas de phrases).
+Sois concret et sceptique. Réponds en français.
 Fraîcheur (champ en_ligne_depuis_jours) : une vraie pépite part en quelques heures ou quelques jours.
 - Plus de 3 jours en ligne avec un prix très bas : jamais « pepite » ; c'est un signal d'alerte
   (défaut caché, prix d'appel, arnaque ou annonce déjà vendue) à mentionner dans red_flags.
@@ -160,6 +162,8 @@ Juge à nouveau l'annonce avec ce contexte :
 - La crédibilité : un prix très en dessous de tout le marché, une annonce en ligne depuis plus de 3 jours
   à un prix très bas, une description vague ou des signes d'arnaque font pencher vers « suspect ».
 - La conformité : hors shortlist (modèle, motorisation, années) = hors_sujet.
+- Le vendeur (quand son profil est fourni) : compte très récent, compte neuf avec une seule annonce très
+  sous le marché, ou plusieurs véhicules en vente (marchand non déclaré) rendent une affaire suspecte.
 - Pas assez d'annonces comparables : juge avec ton estimation du marché et dis-le dans le détail.
 Verdicts : pepite (exceptionnelle et crédible), bonne_affaire, correct, cher, suspect, hors_sujet.
 La cause tient en 3 à 6 mots ; le détail cite les chiffres utiles. Sois sceptique. Réponds en français.`;
@@ -186,6 +190,7 @@ export async function verifyAd(
   ad: Ad,
   comparison: Comparison | null,
   comparablesList: Ad[],
+  seller: SellerCheck | null = null,
 ): Promise<z.infer<typeof VerificationSchema>> {
   if (env.MOCK_AI === '1') {
     const m = mockAnalysis(ad);
@@ -229,6 +234,16 @@ export async function verifyAd(
       market
         ? `Marché France :\n${JSON.stringify(market)}\n\nAnnonces comparables (les plus proches en prix) :\n${JSON.stringify(sample)}`
         : 'Marché France : pas assez d’annonces comparables trouvées.',
+      seller
+        ? `Profil du vendeur (lu sur Leboncoin) :\n${JSON.stringify({
+            membre_depuis: seller.memberSince,
+            anciennete_jours: seller.accountAgeDays,
+            annonces_en_ligne: seller.totalAds,
+            autres_vehicules_en_vente: seller.otherVehicles,
+            verifications: seller.badges,
+            alertes: seller.flags,
+          })}`
+        : '',
     ]
       .filter(Boolean)
       .join('\n\n'),

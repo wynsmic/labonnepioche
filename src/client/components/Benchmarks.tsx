@@ -118,6 +118,7 @@ export function Benchmarks({
   busy,
   locked,
   onCheck,
+  onCheckSeller,
 }: {
   ad: StoredAd;
   /** Quick rule-based discount, shown before any check. */
@@ -128,6 +129,7 @@ export function Benchmarks({
   /** Another check is running. */
   locked: boolean;
   onCheck: (query: Search) => void;
+  onCheckSeller: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const c = ad.comparison;
@@ -181,7 +183,11 @@ export function Benchmarks({
           <div className="check-cause has-tip small" tabIndex={0}>
             {v.cause}
             <span className="tip" role="tooltip">
-              {v.detail}
+              {v.detail.split('\n').filter(Boolean).map((line) => (
+                <span key={line} className="tip-line">
+                  • {line.replace(/^[-•]\s*/, '')}
+                </span>
+              ))}
             </span>
           </div>
           <div className="small muted">
@@ -272,6 +278,33 @@ export function Benchmarks({
         <button type="button" className="ghost small" disabled={locked} onClick={() => onCheck(query)}>
           Revérifier
         </button>
+      )}
+
+      {ad.sellerCheck ? (
+        <div className={`small has-tip seller seller-${ad.sellerCheck.level}`} tabIndex={0}>
+          {ad.sellerCheck.level === 'ok' ? '✓' : '⚠'} Vendeur{' '}
+          {ad.sellerCheck.memberSince ? `depuis ${ad.sellerCheck.memberSince}` : ''}
+          {ad.sellerCheck.totalAds != null ? ` · ${ad.sellerCheck.totalAds} annonce${ad.sellerCheck.totalAds > 1 ? 's' : ''}` : ''}{' '}
+          <a href={ad.sellerCheck.profileUrl} target="_blank" rel="noreferrer">
+            profil ↗
+          </a>
+          <span className="tip" role="tooltip">
+            {(ad.sellerCheck.flags.length ? ad.sellerCheck.flags : ['Rien d’anormal : compte ancien, pas de revente apparente']).map((f) => (
+              <span key={f} className="tip-line">
+                • {f}
+              </span>
+            ))}
+            {ad.sellerCheck.badges.length > 0 && <span className="tip-line">• {ad.sellerCheck.badges.join(', ')}</span>}
+            <span className="tip-line muted-tip">Lu le {new Date(ad.sellerCheck.at).toLocaleDateString('fr-FR')}</span>
+          </span>
+        </div>
+      ) : (
+        ad.sellerId &&
+        !busy && (
+          <button type="button" className="link small" disabled={locked} onClick={onCheckSeller}>
+            Vérifier le vendeur
+          </button>
+        )
       )}
 
       {drop > 0 && <div className="small good">Baisse de {euro.format(drop)} depuis la 1re lecture</div>}

@@ -12,6 +12,9 @@ Trouve les bonnes affaires sur Leboncoin avec une IA (GPT par défaut, ou Claude
 3. **Analyser** : l’IA note chaque annonce (0–100, verdict, prix de marché), la résume, liste les signaux
    d'alerte et les questions à poser.
 Chaque version de la demande est gardée ; un nouveau plan remet toutes les annonces à analyser.
+4. **Vendeurs des affaires frappantes** : pour toute annonce à plus de 15 % sous le marché, l'extension lit le
+   profil public du vendeur (ancienneté, nombre d'annonces, autres véhicules en vente) ; un compte tout neuf
+   ou une activité de revente est signalé (« ⚠ vendeur ») et pris en compte par « Vérifier ».
 
 La liste ressemble à Leboncoin, un clic ouvre l'annonce sur Leboncoin, et la carte situe les annonces (les
 annonces masquées disparaissent de la carte, les favoris sont cerclés de jaune).

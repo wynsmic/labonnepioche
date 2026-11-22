@@ -3,6 +3,7 @@ import { buildSearchUrl } from '../shared/leboncoin';
 import type { Ad, Brief, Search, StoredAd } from '../shared/types';
 import { extensionReady, fetchListings } from './extension';
 import { ApiError, api, type BriefDetail } from './api';
+import { checkSeller, strikingDeals } from './sellers';
 import { AdList, isOffTopic, isRecent } from './components/AdList';
 import { AdMap } from './components/AdMap';
 import { HuntPanel } from './components/HuntPanel';
@@ -82,12 +83,36 @@ export function App() {
   const categoryOf = (ad: StoredAd) =>
     detail?.plan?.plan.searches.find((s) => s.label === ad.searchLabel)?.category ?? 2;
 
+  const checkSellerOf = async (adId: string) => {
+    if (!detail || checking) return;
+    const ad = detail.ads.find((a) => a.id === adId);
+    if (!ad) return;
+    setChecking({ id: adId, step: 'Profil du vendeur…' });
+    try {
+      await checkSeller(detail.brief.id, ad);
+      await reload();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setChecking(null);
+    }
+  };
+
   const checkAd = async (adId: string, query: Search) => {
     if (!detail || checking) return;
     const ad = detail.ads.find((a) => a.id === adId);
     if (!ad) return;
-    setChecking({ id: adId, step: 'Analyse…' });
     try {
+      // A striking deal: its seller is read first, the check takes it into account.
+      if (!ad.sellerCheck && strikingDeals(detail.ads).some((a) => a.id === ad.id)) {
+        setChecking({ id: adId, step: 'Profil du vendeur…' });
+        try {
+          await checkSeller(detail.brief.id, ad);
+        } catch (e) {
+          setError((e as Error).message);
+        }
+      }
+      setChecking({ id: adId, step: 'Analyse…' });
       try {
         // National listings read in the last 3 days are reused by the server.
         await api.verify(detail.brief.id, ad.id, query);
@@ -192,6 +217,7 @@ export function App() {
               onToggle={toggleFlag}
               checking={checking}
               onCheck={checkAd}
+              onCheckSeller={checkSellerOf}
               categoryOf={categoryOf}
               maxAgeDays={maxAgeDays}
               onMaxAgeDays={setMaxAgeDays}

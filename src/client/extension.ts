@@ -32,3 +32,12 @@ export function fetchListings(url: string): Promise<FetchResult> {
   return send<FetchResult>({ type: 'fetch', url });
 }
 
+
+export type ProfileResult =
+  | { ok: true; memberSince: string | null; totalAds: number | null; badges: string[]; ads: { title: string; price: number | null; category: string | null; date: string | null }[]; text: string }
+  | { ok: false; reason: string };
+
+/** Opens a seller's public Leboncoin profile in a background tab of this browser and reads it. */
+export function readProfile(url: string): Promise<ProfileResult> {
+  return send<ProfileResult>({ type: 'profile', url });
+}

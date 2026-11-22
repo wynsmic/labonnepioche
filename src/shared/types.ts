@@ -80,10 +80,12 @@ export const AnalysisSchema = z.object({
     .int()
     .nullable()
     .describe('Prix catalogue neuf de cette version à son année de sortie, en euros ; null si inconnu ou si ce n’est pas un véhicule'),
-  summary: z.string().describe('L’annonce distillée en 2 ou 3 phrases : l’essentiel, sans le blabla du vendeur'),
-  positives: z.array(z.string()),
-  red_flags: z.array(z.string()),
-  questions: z.array(z.string()).describe('Questions à poser au vendeur'),
+  summary: z
+    .string()
+    .describe('UNE phrase de 20 mots maximum : version, année, km, prix et ce qui en fait (ou non) une affaire'),
+  positives: z.array(z.string()).describe('3 au plus, 8 mots maximum chacun, style télégraphique'),
+  red_flags: z.array(z.string()).describe('3 au plus, les plus graves d’abord, 10 mots maximum chacun'),
+  questions: z.array(z.string()).describe('Questions à poser au vendeur : 3 au plus, 10 mots maximum chacune'),
 });
 export type Analysis = z.infer<typeof AnalysisSchema>;
 
@@ -94,7 +96,7 @@ export const VerificationSchema = z.object({
   cause: z.string().describe('La raison principale du verdict en 3 à 6 mots, chiffrée si possible (ex. « 18 % sous le marché, peu de km »)'),
   detail: z
     .string()
-    .describe('2 à 4 phrases : ce que montre la comparaison (chiffres), ce qui confirme ou contredit l’affaire, ce qu’il reste à vérifier'),
+    .describe('3 points au plus, une ligne chacun, séparés par « \n » : ce que montre la comparaison (chiffres), ce qui confirme ou contredit l’affaire, ce qu’il reste à vérifier'),
 });
 export type Verification = z.infer<typeof VerificationSchema> & {
   at: string;
@@ -120,6 +122,9 @@ export interface Ad {
   lng: number | null;
   image: string | null;
   seller: 'pro' | 'private' | null;
+  /** Leboncoin account of the seller (absent on listings read before it was collected). */
+  sellerId?: string | null;
+  sellerName?: string | null;
   attributes: Record<string, string>;
 }
 
@@ -129,6 +134,7 @@ export interface StoredAd extends Ad {
   firstPrice: number | null;
   comparison: import('./compare').Comparison | null;
   verification: Verification | null;
+  sellerCheck: import('./seller').SellerCheck | null;
   firstSeen: string;
   favorite: boolean;
   hidden: boolean;

@@ -72,6 +72,7 @@ export function AdList({
   onToggle,
   checking,
   onCheck,
+  onCheckSeller,
   categoryOf,
   maxAgeDays,
   onMaxAgeDays,
@@ -84,6 +85,7 @@ export function AdList({
   onToggle: (adId: string, flag: 'favorite' | 'hidden', value: boolean) => void;
   checking: { id: string; step: string } | null;
   onCheck: (adId: string, query: Search) => void;
+  onCheckSeller: (adId: string) => void;
   categoryOf: (ad: StoredAd) => number;
   maxAgeDays: number | null;
   onMaxAgeDays: (days: number | null) => void;
@@ -226,6 +228,11 @@ export function AdList({
                         {VERDICT_LABEL[verdictOf(ad)!.verdict]}
                         {verdictOf(ad)!.verified ? ' ✓' : ''}
                       </span>
+                      {ad.sellerCheck && ad.sellerCheck.level !== 'ok' && (
+                        <span className={`seller-pill seller-${ad.sellerCheck.level}`} title={ad.sellerCheck.flags.join(' · ')}>
+                          ⚠ vendeur
+                        </span>
+                      )}
                       <span className="score" title={verdictOf(ad)!.verified ? 'Score après vérification' : 'Score de la première analyse'}>
                         {verdictOf(ad)!.score}/100
                       </span>
@@ -234,12 +241,17 @@ export function AdList({
                       )}
                     </div>
                     <p className="summary small">{ad.analysis.summary}</p>
-                    {ad.analysis.red_flags.length > 0 && (
-                      <p className="flags small">⚠ {ad.analysis.red_flags.join(' · ')}</p>
-                    )}
-                    {ad.analysis.questions.length > 0 && (
-                      <p className="muted small">À demander : {ad.analysis.questions.join(' · ')}</p>
-                    )}
+                    <ul className="notes small">
+                      {ad.analysis.positives.map((x) => (
+                        <li key={`p${x}`} className="note-plus">{x}</li>
+                      ))}
+                      {ad.analysis.red_flags.map((x) => (
+                        <li key={`f${x}`} className="note-flag">{x}</li>
+                      ))}
+                      {ad.analysis.questions.map((x) => (
+                        <li key={`q${x}`} className="note-ask">{x}</li>
+                      ))}
+                    </ul>
                   </Clamp>
                 )}
               </div>
@@ -251,6 +263,7 @@ export function AdList({
               busy={checking?.id === ad.id ? checking.step : null}
               locked={checking != null}
               onCheck={(query) => onCheck(ad.id, query)}
+              onCheckSeller={() => onCheckSeller(ad.id)}
             />
             </div>
             {categoryOf(ad) === 2 && <MarketBlock ad={ad} estimate={estimates.get(ad.id) ?? null} />}

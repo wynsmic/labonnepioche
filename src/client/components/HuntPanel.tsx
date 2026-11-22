@@ -3,6 +3,7 @@ import { buildSearchUrl } from '../../shared/leboncoin';
 import { parseZone } from '../../shared/zone';
 import { api, type BriefDetail } from '../api';
 import { extensionReady, fetchListings } from '../extension';
+import { checkStrikingSellers } from '../sellers';
 
 const PAGES_PER_SEARCH = 2;
 /** Pause between two Leboncoin pages, like a person browsing. */
@@ -263,6 +264,11 @@ export function HuntPanel({
               setBusy('analyse');
               addLog('L’IA analyse les nouvelles annonces…');
               await analyseAll();
+              if (!alive.current) return;
+              // Striking deals: is the seller a fresh account or a hidden business?
+              setBusy('sellers');
+              await checkStrikingSellers(brief.id, addLog);
+              await onChanged();
             })
           }
         >
