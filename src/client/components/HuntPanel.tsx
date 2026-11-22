@@ -70,7 +70,9 @@ export function HuntPanel({
   const promptDirty = prompt !== brief.prompt;
 
   return (
-    <div className="card hunt">
+    <>
+    {/* The demand: title, text and its versions, area */}
+    <section className="card demand" aria-label="Demande">
       <div className="row between">
         <h2>{brief.title}</h2>
         <button
@@ -159,8 +161,10 @@ export function HuntPanel({
           </button>
         </div>
       </details>
+    </section>
 
-      {/* 2. Steps */}
+    <section className="card hunt" aria-label="Recherche">
+      {/* Steps */}
       <div className="steps">
         <button
           type="button"
@@ -331,8 +335,10 @@ export function HuntPanel({
 
       {/* 3. The plan: the shortlist first, it decides everything else */}
       {plan && (plan.plan.shortlist?.length ?? 0) > 0 && (
-        <div className="shortlist">
-          <strong>Choix retenus ({plan.plan.shortlist.length})</strong>
+        <details className="shortlist" open>
+          <summary>
+            <strong>Choix retenus ({plan.plan.shortlist.length})</strong>
+          </summary>
           <ul>
             {plan.plan.shortlist.map((p) => (
               <li key={p.name}>
@@ -345,7 +351,7 @@ export function HuntPanel({
               </li>
             ))}
           </ul>
-        </div>
+        </details>
       )}
       {plan && (
         <details className="plan" open={!detail.ads.length}>
@@ -383,6 +389,7 @@ export function HuntPanel({
           </ul>
         </details>
       )}
-    </div>
+    </section>
+    </>
   );
 }

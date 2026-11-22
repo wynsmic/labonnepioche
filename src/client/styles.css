@@ -109,7 +109,7 @@ label { font-weight: 500; }
 
 .filters { position: sticky; top: -16px; background: var(--bg); padding: 6px 0; z-index: 1; }
 .ads { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
-.ad { background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.ad { background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
 .ad.highlighted { border-color: var(--accent); background: var(--hl); }
 .ad.is-hidden { opacity: 0.55; }
 .ad-main { display: grid; grid-template-columns: minmax(0, 1fr) 230px; }
@@ -185,3 +185,18 @@ label { font-weight: 500; }
 .market th { text-align: left; font-weight: 500; color: var(--muted); padding: 2px 12px 2px 0; white-space: nowrap; width: 1%; vertical-align: top; }
 .market td { padding: 2px 0; font-variant-numeric: tabular-nums; }
 .market td button { padding: 0 8px; min-height: 0; line-height: 1.6; }
+.demand { display: grid; gap: 10px; }
+details.shortlist > summary { cursor: pointer; }
+/* Analysis notes: about 8 lines, the rest on hover (drawn over what follows, no layout jump). */
+.clamp-box { position: relative; max-height: 11.5em; overflow: hidden; }
+.clamp.is-clamped:not(:hover):not(:focus-within) .clamp-box::after {
+  content: ''; position: absolute; inset: auto 0 0 0; height: 2.2em;
+  background: linear-gradient(to bottom, transparent, var(--card));
+}
+.ad.highlighted .clamp.is-clamped:not(:hover):not(:focus-within) .clamp-box::after { background: linear-gradient(to bottom, transparent, var(--hl)); }
+.clamp.is-clamped { cursor: zoom-in; }
+.clamp.is-clamped:hover .clamp-box, .clamp.is-clamped:focus-within .clamp-box { overflow: visible; }
+.clamp.is-clamped:hover .clamp-inner, .clamp.is-clamped:focus-within .clamp-inner {
+  position: relative; z-index: 6; background: var(--card); border-radius: 8px;
+  margin: -6px -8px; padding: 6px 8px; box-shadow: 0 6px 24px rgb(0 0 0 / .22);
+}

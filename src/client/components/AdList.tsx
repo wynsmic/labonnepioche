@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Search, StoredAd, Verdict } from '../../shared/types';
 import { Benchmarks } from './Benchmarks';
 import { MarketBlock } from './MarketBlock';
@@ -38,6 +38,28 @@ function facts(ad: StoredAd): string {
   return [a.regdate, a.mileage ? `${a.mileage}`.replace(/km$/i, '').trim() + ' km' : null, a.fuel, a.gearbox]
     .filter(Boolean)
     .join(' · ');
+}
+
+/** Shows the first lines only; hovering (or focusing) shows the rest over what follows. */
+function Clamp({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [clamped, setClamped] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const check = () => setClamped(el.scrollHeight > el.clientHeight + 2);
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [children]);
+  return (
+    <div className={`clamp${clamped ? ' is-clamped' : ''}`} tabIndex={clamped ? 0 : undefined}>
+      <div ref={ref} className="clamp-box">
+        <div className="clamp-inner">{children}</div>
+      </div>
+    </div>
+  );
 }
 
 export function AdList({
@@ -178,7 +200,7 @@ export function AdList({
                   ) : null}
                 </div>
                 {ad.analysis && (
-                  <>
+                  <Clamp>
                     <div className="verdict-row">
                       <span className={`verdict v-${ad.analysis.verdict}`}>{VERDICT_LABEL[ad.analysis.verdict]}</span>
                       <span className="score">{ad.analysis.score}/100</span>
@@ -193,7 +215,7 @@ export function AdList({
                     {ad.analysis.questions.length > 0 && (
                       <p className="muted small">À demander : {ad.analysis.questions.join(' · ')}</p>
                     )}
-                  </>
+                  </Clamp>
                 )}
               </div>
             </a>
