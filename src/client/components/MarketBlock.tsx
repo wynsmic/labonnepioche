@@ -33,7 +33,9 @@ export function MarketBlock({ ad, estimate }: { ad: StoredAd; estimate: Estimate
                   </span>
                 </>
               ) : (
-                <span className="muted">pas assez d’annonces du même modèle</span>
+                <span className="muted">
+                  {estimate?.basis === 'france' ? 'remplacées par la comparaison France ci-dessous' : 'pas assez d’annonces du même modèle'}
+                </span>
               )}
             </td>
           </tr>
