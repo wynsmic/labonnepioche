@@ -1,11 +1,11 @@
 {
   "manifest_version": 3,
   "name": "Affaires — lecteur Leboncoin",
-  "version": "0.2.0",
-  "description": "Ouvre les recherches Leboncoin demandées par l'outil Affaires dans ton navigateur et lui renvoie les annonces affichées ; lit aussi la cote La Centrale à la demande.",
+  "version": "0.2.1",
+  "description": "Ouvre les recherches Leboncoin demandées par l'outil Affaires dans ton navigateur et lui renvoie les annonces affichées.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnhIVzWBcqy6NCwj02kCrXj30k3PMYA08uDC26zB1+5MOrbdQl69wbi7ISaw42N2h+LDZ4i0pEUtP2cu1i5DDCTwNrehCzd8xx24ohuses3sgQ9mVnUWivqefKgnw7zvwD4yZ4NhuNs+bVsXOKJM/1p1+I/tK9UeIJJpk0RRhmfyYWJUKLCLrQOz65+2Za16hBHQOR4o2SHaCmdMLuqyq8aQr7ZcAOh5lRvkzLdbY5fJB9Dt1KI6Ine5/Yhy4MqD+c8DkvmnHKYSuDnOnoJtomOmv4HVDYtLTXtBHocFpEPfkxDMmh8YVYVy9dk9Oyzo9BKQ9fXiEwyC4qU4nygH4tQIDAQAB",
   "permissions": ["tabs", "scripting"],
-  "host_permissions": ["https://www.leboncoin.fr/*", "https://www.lacentrale.fr/*"],
+  "host_permissions": ["https://www.leboncoin.fr/*"],
   "background": { "service_worker": "background.js", "type": "module" },
   "externally_connectable": {
     "matches": ["https://*.workers.dev/*", "http://localhost/*", "http://127.0.0.1/*"]

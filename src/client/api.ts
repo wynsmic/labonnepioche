@@ -52,8 +52,6 @@ export const api = {
   refine: (id: string) => call<Refine>('POST', `/briefs/${id}/refine`),
   verify: (id: string, adId: string, query: Search, candidates: Ad[]) =>
     call<Verification>('POST', `/briefs/${id}/ads/${adId}/verify`, { query, candidates }),
-  capture: (source: 'lacentrale', url: string, adId: string | null, payload: string) =>
-    call<{ ok: true }>('POST', '/captures', { source, url, adId, payload }),
   flagAd: (id: string, adId: string, flags: { favorite?: boolean; hidden?: boolean }) =>
     call<{ ok: true }>('PATCH', `/briefs/${id}/ads/${adId}`, flags),
 };
