@@ -19,7 +19,7 @@ export function App() {
   const [creating, setCreating] = useState(false);
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [comparing, setComparing] = useState<string | null>(null);
+  const [checking, setChecking] = useState<{ id: string; step: string } | null>(null);
   /** Only recent listings by default: real deals go fast. */
   const [maxAgeDays, setMaxAgeDays] = useState<number | null>(3);
 
@@ -80,11 +80,11 @@ export function App() {
   const categoryOf = (ad: StoredAd) =>
     detail?.plan?.plan.searches.find((s) => s.label === ad.searchLabel)?.category ?? 2;
 
-  const compareAd = async (adId: string, query: Search) => {
-    if (!detail || comparing) return;
+  const checkAd = async (adId: string, query: Search) => {
+    if (!detail || checking) return;
     const ad = detail.ads.find((a) => a.id === adId);
     if (!ad) return;
-    setComparing(adId);
+    setChecking({ id: adId, step: 'Annonces en France…' });
     try {
       if (!(await extensionReady())) throw new Error('Extension Affaires introuvable dans ce navigateur.');
       const candidates: Ad[] = [];
@@ -98,12 +98,13 @@ export function App() {
         if (result.ads.length < 20) break;
         await new Promise((r) => setTimeout(r, 4_000 + Math.random() * 3_000));
       }
-      await api.compare(detail.brief.id, ad.id, query, candidates);
+      setChecking({ id: adId, step: 'Analyse…' });
+      await api.verify(detail.brief.id, ad.id, query, candidates);
       await reload();
     } catch (e) {
       setError((e as Error).message);
     } finally {
-      setComparing(null);
+      setChecking(null);
     }
   };
 
@@ -180,8 +181,8 @@ export function App() {
               highlighted={highlighted}
               onHover={setHighlighted}
               onToggle={toggleFlag}
-              comparing={comparing}
-              onCompare={compareAd}
+              checking={checking}
+              onCheck={checkAd}
               categoryOf={categoryOf}
               maxAgeDays={maxAgeDays}
               onMaxAgeDays={setMaxAgeDays}

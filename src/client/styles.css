@@ -161,3 +161,17 @@ label { font-weight: 500; }
 @media (prefers-reduced-motion: reduce) {
   * { scroll-behavior: auto !important; }
 }
+
+.bench-head { gap: 4px; }
+.check-verdict { font-size: 22px; font-weight: 800; line-height: 1.1; }
+.v-text-pepite { color: var(--v-pepite); }
+.v-text-bonne_affaire { color: var(--v-good); }
+.v-text-correct { color: var(--v-ok); }
+.v-text-cher { color: var(--v-bad); }
+.v-text-suspect { color: var(--v-suspect); }
+.v-text-hors_sujet { color: var(--muted); }
+.check-cause { position: relative; font-weight: 600; cursor: help; text-decoration: underline dotted; text-underline-offset: 3px; }
+.check-cause .tip { display: none; position: absolute; z-index: 5; right: 0; top: calc(100% + 6px); width: 280px; padding: 8px 10px; border-radius: 8px; background: var(--ink); color: var(--card); font-weight: 400; line-height: 1.4; box-shadow: 0 4px 16px rgb(0 0 0 / .25); text-decoration: none; }
+.check-cause:hover .tip, .check-cause:focus .tip { display: block; }
+.check-market summary { cursor: pointer; }
+.check-market > div, .check-market > ul, .check-market > a { margin-top: 4px; }

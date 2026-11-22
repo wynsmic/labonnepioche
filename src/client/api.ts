@@ -1,5 +1,4 @@
-import type { Comparison } from '../shared/compare';
-import type { Ad, Brief, Plan, Refine, Search, StoredAd } from '../shared/types';
+import type { Ad, Brief, Plan, Refine, Search, StoredAd, Verification } from '../shared/types';
 
 export class ApiError extends Error {
   constructor(
@@ -51,8 +50,8 @@ export const api = {
   clean: (id: string) => call<{ removed: number }>('POST', `/briefs/${id}/clean`),
   resetAnalyses: (id: string) => call<{ ok: true }>('POST', `/briefs/${id}/reset-analyses`),
   refine: (id: string) => call<Refine>('POST', `/briefs/${id}/refine`),
-  compare: (id: string, adId: string, query: Search, candidates: Ad[]) =>
-    call<Comparison>('POST', `/briefs/${id}/ads/${adId}/comparison`, { query, candidates }),
+  verify: (id: string, adId: string, query: Search, candidates: Ad[]) =>
+    call<Verification>('POST', `/briefs/${id}/ads/${adId}/verify`, { query, candidates }),
   flagAd: (id: string, adId: string, flags: { favorite?: boolean; hidden?: boolean }) =>
     call<{ ok: true }>('PATCH', `/briefs/${id}/ads/${adId}`, flags),
 };

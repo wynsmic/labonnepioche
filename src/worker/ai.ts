@@ -1,13 +1,15 @@
+import type { z } from 'zod';
 import {
   AnalysesSchema,
   PlanSchema,
   RefineSchema,
+  VerificationSchema,
   type Ad,
   type Analysis,
   type Plan,
   type Refine,
 } from '../shared/types';
-import { ageInDays } from '../shared/compare';
+import { ageInDays, numberFrom, type Comparison } from '../shared/compare';
 import { llm, type Env } from './llm';
 
 const PREPARE_SYSTEM = `Tu aides un particulier à dénicher de vraies bonnes affaires sur Leboncoin (France).
@@ -112,6 +114,82 @@ export async function analyseAds(env: Env, prompt: string, plan: Plan | null, ad
   });
   const wanted = new Set(ads.map((a) => a.id));
   return result.analyses.filter((a) => wanted.has(a.id));
+}
+
+const VERIFY_SYSTEM = `Tu vérifies UNE annonce Leboncoin qui semble être une bonne affaire, pour un particulier.
+On te donne sa demande, la shortlist des seuls choix acceptés, l'annonce, et une comparaison avec des annonces
+de particuliers très proches partout en France (même modèle, années et kilométrage voisins ; même motorisation
+quand le champ « niveau » vaut « motorisation », sinon motorisation non garantie).
+Juge à nouveau l'annonce avec ce contexte :
+- Le prix : écart à la médiane et à la fourchette habituelle, en tenant compte du kilométrage, de l'année,
+  de l'équipement et de l'état décrit, comparés aux annonces similaires.
+- La crédibilité : un prix très en dessous de tout le marché, une annonce en ligne depuis plus de 3 jours
+  à un prix très bas, une description vague ou des signes d'arnaque font pencher vers « suspect ».
+- La conformité : hors shortlist (modèle, motorisation, années) = hors_sujet.
+- Pas assez d'annonces comparables : juge avec ton estimation du marché et dis-le dans le détail.
+Verdicts : pepite (exceptionnelle et crédible), bonne_affaire, correct, cher, suspect, hors_sujet.
+La cause tient en 3 à 6 mots ; le détail cite les chiffres utiles. Sois sceptique. Réponds en français.`;
+
+function compactComparable(ad: Ad) {
+  return {
+    titre: ad.title,
+    prix: ad.price,
+    km: numberFrom(ad.attributes.mileage),
+    annee: numberFrom(ad.attributes.regdate),
+    ville: ad.city,
+    en_ligne_depuis_jours: (() => {
+      const days = ageInDays(ad.date);
+      return days == null ? null : Math.round(days);
+    })(),
+    description: ad.body.slice(0, 200),
+  };
+}
+
+export async function verifyAd(
+  env: Env,
+  prompt: string,
+  plan: Plan | null,
+  ad: Ad,
+  comparison: Comparison | null,
+  comparablesList: Ad[],
+): Promise<z.infer<typeof VerificationSchema>> {
+  if (env.MOCK_AI === '1') {
+    const m = mockAnalysis(ad);
+    return { verdict: m.verdict, score: m.score, cause: 'Exemple hors ligne', detail: 'Réponse d’exemple (MOCK_AI=1).' };
+  }
+  const market = comparison
+    ? {
+        niveau: comparison.match,
+        motorisation_lue: comparison.engine,
+        annonces: comparison.count,
+        mediane: comparison.median,
+        fourchette_habituelle: [comparison.p25, comparison.p75],
+        min: comparison.min,
+        max: comparison.max,
+        part_plus_cheres_que_cette_annonce_pct: comparison.cheaperThan,
+        km_median: comparison.medianMileage,
+        annee_mediane: comparison.medianYear,
+      }
+    : null;
+  // Closest in price first: the ones that tell most about this listing.
+  const sample = [...comparablesList]
+    .sort((x, y) => Math.abs((x.price ?? 0) - (ad.price ?? 0)) - Math.abs((y.price ?? 0) - (ad.price ?? 0)))
+    .slice(0, 25)
+    .map(compactComparable);
+  return llm(env).structured(VerificationSchema, {
+    system: VERIFY_SYSTEM,
+    user: [
+      `Demande :\n${prompt}`,
+      plan ? `Shortlist :\n${formatShortlist(plan)}` : '',
+      `Annonce à vérifier :\n${JSON.stringify(compactAd(ad))}`,
+      market
+        ? `Marché France :\n${JSON.stringify(market)}\n\nAnnonces comparables (les plus proches en prix) :\n${JSON.stringify(sample)}`
+        : 'Marché France : pas assez d’annonces comparables trouvées.',
+    ]
+      .filter(Boolean)
+      .join('\n\n'),
+    effort: 'medium',
+  });
 }
 
 const REFINE_SYSTEM = `Tu aides à affiner une demande de recherche de bonnes affaires sur Leboncoin.

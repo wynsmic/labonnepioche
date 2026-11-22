@@ -6,10 +6,10 @@ import { z } from 'zod';
 import { isExcluded, locationsFromUrl, matchesSearch } from '../shared/leboncoin';
 import { parseZone, toLocationsParam } from '../shared/zone';
 import { resolvePlaces } from './geo';
-import { MIN_COMPARABLES, compare } from '../shared/compare';
+import { comparables, compare } from '../shared/compare';
 import { SearchSchema, type Ad } from '../shared/types';
 import { SESSION_COOKIE, checkPassword, createSession, requireSession } from './auth';
-import { analyseAds, preparePlan, refinePrompt } from './ai';
+import { analyseAds, preparePlan, refinePrompt, verifyAd } from './ai';
 import { AiError, llm, modelLabel } from './llm';
 import * as db from './db';
 import type { AppEnv } from './env';
@@ -217,22 +217,27 @@ app.post('/briefs/:id/refine', async (c) => {
   return c.json(proposal);
 });
 
-/** Places a listing among very similar ones across France (collected by the extension). */
-app.post('/briefs/:id/ads/:adId/comparison', async (c) => {
-  const briefId = c.req.param('id');
-  const ad = await db.getAd(c.env.DB, briefId, c.req.param('adId'));
+/**
+ * Check of one listing: places it among very similar listings across France (collected by the
+ * extension), then has the model judge it again with that context.
+ */
+app.post('/briefs/:id/ads/:adId/verify', async (c) => {
+  const brief = await db.getBrief(c.env.DB, c.req.param('id'));
+  if (!brief) return c.json({ error: 'Recherche introuvable' }, 404);
+  const ad = await db.getAd(c.env.DB, brief.id, c.req.param('adId'));
   if (!ad) return c.json({ error: 'Annonce introuvable' }, 404);
   const input = z
     .object({ query: SearchSchema, candidates: z.array(AdSchema).max(300) })
     .parse(await c.req.json());
-  const current = await db.latestPlan(c.env.DB, briefId);
+  const current = await db.latestPlan(c.env.DB, brief.id);
   const exclude = [...new Set(current?.plan.searches.flatMap((s) => s.exclude_keywords) ?? [])];
-  const comparison = compare(ad, input.candidates, input.query, exclude, new Date().toISOString());
-  if (!comparison) {
-    return c.json({ error: `Pas assez d’annonces comparables en France (moins de ${MIN_COMPARABLES})` }, 422);
-  }
-  await db.saveComparison(c.env.DB, briefId, ad.id, comparison);
-  return c.json(comparison);
+  const at = new Date().toISOString();
+  const comparison = compare(ad, input.candidates, input.query, exclude, at);
+  const { kept } = comparables(ad, input.candidates, exclude);
+  const result = await verifyAd(c.env, brief.prompt, current?.plan ?? null, ad, comparison, comparison ? kept : []);
+  const verification = { ...result, at, comparables: comparison?.count ?? 0, match: comparison?.match ?? null };
+  await db.saveVerification(c.env.DB, brief.id, ad.id, comparison, verification);
+  return c.json(verification);
 });
 
 app.patch('/briefs/:id/ads/:adId', async (c) => {
@@ -244,6 +249,9 @@ app.patch('/briefs/:id/ads/:adId', async (c) => {
 app.onError((err, c) => {
   if (err instanceof z.ZodError) return c.json({ error: 'Requête invalide', details: err.issues }, 400);
   if (err instanceof AiError) return c.json({ error: err.message }, 502);
+  if (err instanceof OpenAI.RateLimitError && (err.type === 'insufficient_quota' || err.code === 'insufficient_quota' || err.code === 'credit_balance_exhausted')) {
+    return c.json({ error: 'Plus de crédit OpenAI : recharge sur platform.openai.com/settings/organization/billing' }, 402);
+  }
   if (err instanceof Anthropic.RateLimitError || err instanceof OpenAI.RateLimitError) {
     return c.json({ error: 'Le modèle est surchargé ou ton quota est atteint, réessaie dans une minute' }, 503);
   }

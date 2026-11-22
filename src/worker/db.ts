@@ -1,5 +1,5 @@
 import type { Comparison } from '../shared/compare';
-import type { Ad, Analysis, Brief, Plan, StoredAd } from '../shared/types';
+import type { Ad, Analysis, Brief, Plan, StoredAd, Verification } from '../shared/types';
 
 interface BriefRow {
   id: string;
@@ -20,6 +20,7 @@ interface AdRow {
   hidden: number;
   first_price: number | null;
   comparison: string | null;
+  verification: string | null;
 }
 
 const toBrief = (r: BriefRow): Brief => ({
@@ -37,6 +38,7 @@ const toAd = (r: AdRow): StoredAd => ({
   firstSeen: r.first_seen,
   firstPrice: r.first_price,
   comparison: r.comparison ? (JSON.parse(r.comparison) as Comparison) : null,
+  verification: r.verification ? (JSON.parse(r.verification) as Verification) : null,
   favorite: r.favorite === 1,
   hidden: r.hidden === 1,
   analysis: r.analysis ? (JSON.parse(r.analysis) as Analysis) : null,
@@ -146,7 +148,7 @@ export async function latestPlan(db: D1Database, briefId: string): Promise<{ pla
 export async function listAds(db: D1Database, briefId: string): Promise<StoredAd[]> {
   const { results } = await db
     .prepare(
-      'SELECT id, data, search_label, first_seen, analysis, favorite, hidden, first_price, comparison FROM ads WHERE brief_id = ? ORDER BY first_seen DESC',
+      'SELECT id, data, search_label, first_seen, analysis, favorite, hidden, first_price, comparison, verification FROM ads WHERE brief_id = ? ORDER BY first_seen DESC',
     )
     .bind(briefId)
     .all<AdRow>();
@@ -187,6 +189,10 @@ export async function upsertAds(
          WHEN json_extract(ads.data, '$.price') IS NOT json_extract(excluded.data, '$.price')
            OR json_extract(ads.data, '$.body') IS NOT json_extract(excluded.data, '$.body')
          THEN 0 ELSE ads.analysis_attempts END,
+       verification = CASE
+         WHEN json_extract(ads.data, '$.price') IS NOT json_extract(excluded.data, '$.price')
+           OR json_extract(ads.data, '$.body') IS NOT json_extract(excluded.data, '$.body')
+         THEN NULL ELSE ads.verification END,
        data = excluded.data`,
   );
   for (let i = 0; i < ads.length; i += 50) {
@@ -282,4 +288,17 @@ export async function deleteAds(db: D1Database, briefId: string, ids: string[]):
       .bind(briefId, ...chunk)
       .run();
   }
+}
+
+export async function saveVerification(
+  db: D1Database,
+  briefId: string,
+  adId: string,
+  comparison: Comparison | null,
+  verification: Verification,
+): Promise<void> {
+  await db
+    .prepare('UPDATE ads SET comparison = ?, verification = ? WHERE brief_id = ? AND id = ?')
+    .bind(comparison ? JSON.stringify(comparison) : null, JSON.stringify(verification), briefId, adId)
+    .run();
 }

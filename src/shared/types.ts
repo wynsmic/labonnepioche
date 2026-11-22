@@ -73,6 +73,17 @@ export const AnalysisSchema = z.object({
 });
 export type Analysis = z.infer<typeof AnalysisSchema>;
 
+/** Second look at one listing, with the national comparison in hand. */
+export const VerificationSchema = z.object({
+  verdict: z.enum(VERDICTS),
+  score: z.number().int().describe('0 à 100, comme pour l’analyse'),
+  cause: z.string().describe('La raison principale du verdict en 3 à 6 mots, chiffrée si possible (ex. « 18 % sous le marché, peu de km »)'),
+  detail: z
+    .string()
+    .describe('2 à 4 phrases : ce que montre la comparaison (chiffres), ce qui confirme ou contredit l’affaire, ce qu’il reste à vérifier'),
+});
+export type Verification = z.infer<typeof VerificationSchema> & { at: string; comparables: number; match: 'motorisation' | 'modele' | null };
+
 export const AnalysesSchema = z.object({ analyses: z.array(AnalysisSchema) });
 
 export const RefineSchema = z.object({
@@ -103,6 +114,7 @@ export interface StoredAd extends Ad {
   /** Price when the listing was first collected. */
   firstPrice: number | null;
   comparison: import('./compare').Comparison | null;
+  verification: Verification | null;
   firstSeen: string;
   favorite: boolean;
   hidden: boolean;

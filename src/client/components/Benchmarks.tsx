@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { buildSearchUrl } from '../../shared/leboncoin';
 import { comparableQuery, numberFrom } from '../../shared/compare';
 import type { Search, StoredAd } from '../../shared/types';
+import { VERDICT_LABEL } from './AdList';
 
 const euro = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
 const int = new Intl.NumberFormat('fr-FR');
@@ -40,7 +41,6 @@ function Strip({ prices, price, median }: { prices: number[]; price: number; med
   );
 }
 
-/** Evidence that a listing is (or is not) a real deal. */
 /** The national search to compare with, editable before it runs. */
 function CompareForm({
   initial,
@@ -89,7 +89,7 @@ function CompareForm({
       </div>
       <div className="row">
         <button type="submit" className="primary small" disabled={busy || !q.text.trim()}>
-          {busy ? 'Comparaison…' : 'Comparer en France'}
+          Vérifier
         </button>
         <button type="button" className="ghost small" onClick={onCancel}>
           Annuler
@@ -99,107 +99,139 @@ function CompareForm({
   );
 }
 
+/**
+ * Check of a listing: national price comparison (same engine when possible), then the model's
+ * second verdict in one word, its cause in a few words, the detail on hover.
+ */
 export function Benchmarks({
   ad,
   category,
   busy,
-  onCompare,
+  locked,
+  onCheck,
 }: {
   ad: StoredAd;
   category: number;
-  busy: boolean;
-  onCompare: (query: Search) => void;
+  /** Current step while this listing is being checked. */
+  busy: string | null;
+  /** Another check is running. */
+  locked: boolean;
+  onCheck: (query: Search) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const c = ad.comparison;
+  const v = ad.verification;
   const price = ad.price;
   const mileage = numberFrom(ad.attributes.mileage);
   const year = numberFrom(ad.attributes.regdate);
   const days = daysSince(ad.date);
   const drop = ad.firstPrice != null && price != null && ad.firstPrice > price ? ad.firstPrice - price : 0;
-  const ai = ad.analysis?.market_price ?? null;
+  const query = c?.query ?? comparableQuery(ad, category);
 
   return (
-    <aside className="bench" aria-label="Repères">
-      <strong className="small">Repères</strong>
+    <aside className="bench" aria-label="Vérification">
+      <div className="row bench-head">
+        <strong className="small">Vérification</strong>
+        <span className="spacer" />
+        {!busy && (
+          <button type="button" className="ghost small" disabled={locked} onClick={() => setEditing(!editing)} title="Régler la recherche de comparables">
+            ⚙
+          </button>
+        )}
+      </div>
 
-      {c && price != null ? (
+      {busy ? (
+        <div className="small muted">{busy}</div>
+      ) : v ? (
         <>
-          <div className={`bench-big ${price < c.median ? 'good' : 'bad'}`}>
-            {pct(price, c.median) > 0 ? '+' : ''}
-            {pct(price, c.median)} %<span className="small"> vs médiane France</span>
+          <div className={`check-verdict v-text-${v.verdict}`}>{VERDICT_LABEL[v.verdict]}</div>
+          <div className="check-cause small" tabIndex={0}>
+            {v.cause}
+            <span className="tip" role="tooltip">
+              {v.detail}
+            </span>
           </div>
-          <div className="small">
-            Moins cher que <strong>{c.cheaperThan} %</strong> des {c.count} annonces similaires
-          </div>
-          <Strip prices={c.prices} price={price} median={c.median} />
           <div className="small muted">
-            Médiane {euro.format(c.median)} · habituel {euro.format(c.p25)}–{euro.format(c.p75)}
-          </div>
-          {mileage != null && c.medianMileage != null && (
-            <div className={`small ${mileage <= c.medianMileage ? 'good' : 'bad'}`}>
-              {int.format(mileage)} km vs {int.format(c.medianMileage)} km médian
-            </div>
-          )}
-          {year != null && c.medianYear != null && year !== c.medianYear && (
-            <div className={`small ${year > c.medianYear ? 'good' : 'bad'}`}>
-              {year} vs {c.medianYear} médian
-            </div>
-          )}
-          <details className="small">
-            <summary>Les moins chères en France</summary>
-            <ul className="cheapest">
-              {c.cheapest.map((x) => (
-                <li key={x.url}>
-                  <a href={x.url} target="_blank" rel="noreferrer">
-                    {euro.format(x.price)}
-                  </a>{' '}
-                  · {x.year ?? '?'} · {x.mileage != null ? `${int.format(x.mileage)} km` : '?'} · {x.city ?? ''}
-                </li>
-              ))}
-            </ul>
-          </details>
-          <div className="row small">
-            <a href={buildSearchUrl(c.query, null)} target="_blank" rel="noreferrer">
-              Recherche nationale ↗
-            </a>
-            <button type="button" className="ghost small" disabled={busy} onClick={() => setEditing(true)}>
-              Refaire
-            </button>
+            {v.comparables
+              ? `${v.comparables} annonces comparées · ${v.match === 'motorisation' ? 'même motorisation' : 'même modèle'}`
+              : 'Pas assez d’annonces comparables'}
           </div>
         </>
       ) : (
         !editing && (
-          <button type="button" className="small" disabled={busy || price == null} onClick={() => setEditing(true)}>
-            {busy ? 'Comparaison en France…' : 'Situer le prix en France'}
+          <button type="button" className="primary small" disabled={locked || price == null} onClick={() => onCheck(query)}>
+            Vérifier
           </button>
         )
       )}
-      {editing && (
+
+      {editing && !busy && (
         <CompareForm
-          initial={c?.query ?? comparableQuery(ad, category)}
-          busy={busy}
-          onRun={(query) => {
+          initial={query}
+          busy={false}
+          onRun={(q) => {
             setEditing(false);
-            onCompare(query);
+            onCheck(q);
           }}
           onCancel={() => setEditing(false)}
         />
       )}
 
-      {ai != null && price != null && (
-        <div className={`small ${price < ai ? 'good' : 'bad'}`}>
-          Marché estimé (IA) {euro.format(ai)} ({pct(price, ai) > 0 ? '+' : ''}
-          {pct(price, ai)} %)
-        </div>
+      {c && price != null && !busy && (
+        <details className="small check-market">
+          <summary>
+            <span className={price < c.median ? 'good' : 'bad'}>
+              {pct(price, c.median) > 0 ? '+' : ''}
+              {pct(price, c.median)} %
+            </span>{' '}
+            vs médiane France
+          </summary>
+          <div>
+            Moins cher que <strong>{c.cheaperThan} %</strong> des {c.count} annonces
+            {c.engine ? ` (${c.engine})` : ''}
+          </div>
+          <Strip prices={c.prices} price={price} median={c.median} />
+          <div className="muted">
+            Médiane {euro.format(c.median)} · habituel {euro.format(c.p25)}–{euro.format(c.p75)}
+          </div>
+          {mileage != null && c.medianMileage != null && (
+            <div className={mileage <= c.medianMileage ? 'good' : 'bad'}>
+              {int.format(mileage)} km vs {int.format(c.medianMileage)} km médian
+            </div>
+          )}
+          {year != null && c.medianYear != null && year !== c.medianYear && (
+            <div className={year > c.medianYear ? 'good' : 'bad'}>
+              {year} vs {c.medianYear} médian
+            </div>
+          )}
+          <ul className="cheapest">
+            {c.cheapest.map((x) => (
+              <li key={x.url}>
+                <a href={x.url} target="_blank" rel="noreferrer">
+                  {euro.format(x.price)}
+                </a>{' '}
+                · {x.year ?? '?'} · {x.mileage != null ? `${int.format(x.mileage)} km` : '?'} · {x.city ?? ''}
+              </li>
+            ))}
+          </ul>
+          <a href={buildSearchUrl(c.query, null)} target="_blank" rel="noreferrer">
+            Recherche nationale ↗
+          </a>
+        </details>
       )}
+
+      {v && !busy && (
+        <button type="button" className="ghost small" disabled={locked} onClick={() => onCheck(query)}>
+          Revérifier
+        </button>
+      )}
+
       {drop > 0 && <div className="small good">Baisse de {euro.format(drop)} depuis la 1re lecture</div>}
       {days != null && (
         <div className="small muted">
           En ligne depuis {days} j{days >= 30 ? ' : vendeur peut-être ouvert à la négociation' : ''}
         </div>
       )}
-      {ad.seller === 'private' && <div className="small muted">Particulier (pas de marge de pro)</div>}
     </aside>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ageInDays, compare, comparableQuery, numberFrom } from '../src/shared/compare';
+import { ageInDays, comparables, compare, comparableQuery, engineOf, numberFrom } from '../src/shared/compare';
 import type { Ad } from '../src/shared/types';
 
 const ad = (id: string, price: number | null, attrs: Record<string, string> = {}, title = 'Toyota Yaris'): Ad => ({
@@ -75,4 +75,29 @@ it('measures the age of a listing in days', () => {
   expect(ageInDays('2026-11-17 12:00:00', now)).toBe(3);
   expect(ageInDays('2026-11-20 06:00:00', now)).toBe(0.25);
   expect(ageInDays(null, now)).toBeNull();
+});
+
+describe('engineOf', () => {
+  it('reads displacement, family and power from the title', () => {
+    expect(engineOf(ad('1', 1, {}, 'Renault Clio IV 1.5 dCi 90ch Business'))).toEqual({ displacement: '1.5', family: 'dci', power: 90 });
+  });
+  it('joins split family names and ignores prices', () => {
+    expect(engineOf(ad('1', 1, {}, 'Peugeot 308 Blue HDi 130 cv 1.500 € de frais'))).toMatchObject({ family: 'bluehdi', power: 130, displacement: null });
+  });
+});
+
+describe('comparables', () => {
+  const target = ad('1', 8000, {}, 'Clio 1.5 dCi 90');
+  it('keeps the same engine when enough listings state it', () => {
+    const same = [1, 2, 3, 4, 5].map((i) => ad(`s${i}`, 9000, {}, 'Clio 1.5 dCi 90ch'));
+    const other = [1, 2].map((i) => ad(`o${i}`, 9000, {}, 'Clio 0.9 TCe 90'));
+    const r = comparables(target, [...same, ...other], []);
+    expect(r.match).toBe('motorisation');
+    expect(r.kept.map((a) => a.id)).toEqual(same.map((a) => a.id));
+  });
+  it('falls back to the same model when too few state the engine', () => {
+    const r = comparables(target, [1, 2, 3, 4, 5].map((i) => ad(`m${i}`, 9000, {}, 'Clio')), []);
+    expect(r.match).toBe('modele');
+    expect(r.kept).toHaveLength(5);
+  });
 });

@@ -43,8 +43,8 @@ export function AdList({
   highlighted,
   onHover,
   onToggle,
-  comparing,
-  onCompare,
+  checking,
+  onCheck,
   categoryOf,
   maxAgeDays,
   onMaxAgeDays,
@@ -53,8 +53,8 @@ export function AdList({
   highlighted: string | null;
   onHover: (id: string | null) => void;
   onToggle: (adId: string, flag: 'favorite' | 'hidden', value: boolean) => void;
-  comparing: string | null;
-  onCompare: (adId: string, query: Search) => void;
+  checking: { id: string; step: string } | null;
+  onCheck: (adId: string, query: Search) => void;
   categoryOf: (ad: StoredAd) => number;
   maxAgeDays: number | null;
   onMaxAgeDays: (days: number | null) => void;
@@ -176,8 +176,9 @@ export function AdList({
             <Benchmarks
               ad={ad}
               category={categoryOf(ad)}
-              busy={comparing === ad.id}
-              onCompare={(query) => onCompare(ad.id, query)}
+              busy={checking?.id === ad.id ? checking.step : null}
+              locked={checking != null}
+              onCheck={(query) => onCheck(ad.id, query)}
             />
             </div>
             <div className="ad-actions">
