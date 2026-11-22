@@ -19,6 +19,12 @@ function daysSince(date: string | null): number | null {
   return Number.isNaN(t) ? null : Math.max(0, Math.floor((Date.now() - t) / 86_400_000));
 }
 
+/** "il y a 5 h" / "il y a 2 j" for the reuse of national listings. */
+function readAgo(iso: string): string {
+  const hours = (Date.now() - Date.parse(iso)) / 3_600_000;
+  return hours < 24 ? `il y a ${Math.max(1, Math.round(hours))} h` : `il y a ${Math.floor(hours / 24)} j`;
+}
+
 /** Prices of similar listings as dots on a line, this listing highlighted. */
 function Strip({ prices, price, median }: { prices: number[]; price: number; median: number }) {
   const min = Math.min(prices[0], price);
@@ -181,6 +187,7 @@ export function Benchmarks({
             {v.comparables
               ? `${v.comparables} annonces comparées · ${v.match === 'motorisation' ? 'même motorisation' : 'même modèle'}`
               : 'Pas assez d’annonces comparables'}
+            {v.searchedAt && v.searchedAt !== v.at ? ` · lues ${readAgo(v.searchedAt)}` : ''}
           </div>
         </>
       ) : (

@@ -84,22 +84,29 @@ export function App() {
     if (!detail || checking) return;
     const ad = detail.ads.find((a) => a.id === adId);
     if (!ad) return;
-    setChecking({ id: adId, step: 'Annonces en France…' });
+    setChecking({ id: adId, step: 'Analyse…' });
     try {
-      if (!(await extensionReady())) throw new Error('Extension Affaires introuvable dans ce navigateur.');
-      const candidates: Ad[] = [];
-      for (let page = 1; page <= 2; page++) {
-        const result = await fetchListings(buildSearchUrl(query, null, page));
-        if (!result.ok) {
-          if (result.reason === 'captcha') throw new Error('Leboncoin a demandé une vérification. Réessaie dans un moment.');
-          break;
+      try {
+        // National listings read in the last 3 days are reused by the server.
+        await api.verify(detail.brief.id, ad.id, query);
+      } catch (e) {
+        if (!(e instanceof ApiError && e.status === 409)) throw e;
+        setChecking({ id: adId, step: 'Annonces en France…' });
+        if (!(await extensionReady())) throw new Error('Extension Affaires introuvable dans ce navigateur.');
+        const candidates: Ad[] = [];
+        for (let page = 1; page <= 2; page++) {
+          const result = await fetchListings(buildSearchUrl(query, null, page));
+          if (!result.ok) {
+            if (result.reason === 'captcha') throw new Error('Leboncoin a demandé une vérification. Réessaie dans un moment.');
+            break;
+          }
+          candidates.push(...result.ads);
+          if (result.ads.length < 20) break;
+          await new Promise((r) => setTimeout(r, 4_000 + Math.random() * 3_000));
         }
-        candidates.push(...result.ads);
-        if (result.ads.length < 20) break;
-        await new Promise((r) => setTimeout(r, 4_000 + Math.random() * 3_000));
+        setChecking({ id: adId, step: 'Analyse…' });
+        await api.verify(detail.brief.id, ad.id, query, candidates);
       }
-      setChecking({ id: adId, step: 'Analyse…' });
-      await api.verify(detail.brief.id, ad.id, query, candidates);
       await reload();
     } catch (e) {
       setError((e as Error).message);

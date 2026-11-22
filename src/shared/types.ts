@@ -82,7 +82,13 @@ export const VerificationSchema = z.object({
     .string()
     .describe('2 à 4 phrases : ce que montre la comparaison (chiffres), ce qui confirme ou contredit l’affaire, ce qu’il reste à vérifier'),
 });
-export type Verification = z.infer<typeof VerificationSchema> & { at: string; comparables: number; match: 'motorisation' | 'modele' | null };
+export type Verification = z.infer<typeof VerificationSchema> & {
+  at: string;
+  /** When the national listings were read (reused for 3 days). Absent on older checks. */
+  searchedAt?: string;
+  comparables: number;
+  match: 'motorisation' | 'modele' | null;
+};
 
 export const AnalysesSchema = z.object({ analyses: z.array(AnalysisSchema) });
 

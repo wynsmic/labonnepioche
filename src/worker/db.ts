@@ -303,3 +303,20 @@ export async function saveVerification(
     .run();
 }
 
+
+/** Listings of a national search read less than `maxAgeDays` ago, with when they were read. */
+export async function getCachedSearch(db: D1Database, key: string, maxAgeDays: number): Promise<{ ads: Ad[]; at: string } | null> {
+  const row = await db
+    .prepare('SELECT ads, created_at FROM search_cache WHERE key = ? AND created_at > ?')
+    .bind(key, new Date(Date.now() - maxAgeDays * 86_400_000).toISOString())
+    .first<{ ads: string; created_at: string }>();
+  return row ? { ads: JSON.parse(row.ads) as Ad[], at: row.created_at } : null;
+}
+
+export async function putCachedSearch(db: D1Database, key: string, ads: Ad[], at: string): Promise<void> {
+  await db.batch([
+    db.prepare('INSERT OR REPLACE INTO search_cache (key, created_at, ads) VALUES (?, ?, ?)').bind(key, at, JSON.stringify(ads)),
+    // Housekeeping: nothing older than a week is worth keeping.
+    db.prepare('DELETE FROM search_cache WHERE created_at < ?').bind(new Date(Date.now() - 7 * 86_400_000).toISOString()),
+  ]);
+}

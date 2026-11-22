@@ -3,7 +3,7 @@ import OpenAI from 'openai';
 import { Hono } from 'hono';
 import { deleteCookie, setCookie } from 'hono/cookie';
 import { z } from 'zod';
-import { isExcluded, locationsFromUrl, matchesSearch } from '../shared/leboncoin';
+import { buildSearchUrl, isExcluded, locationsFromUrl, matchesSearch } from '../shared/leboncoin';
 import { parseZone, toLocationsParam } from '../shared/zone';
 import { resolvePlaces } from './geo';
 import { comparables, compare } from '../shared/compare';
@@ -15,6 +15,7 @@ import * as db from './db';
 import type { AppEnv } from './env';
 
 const ANALYSE_BATCH = 12;
+const SEARCH_CACHE_DAYS = 3;
 
 const app = new Hono<AppEnv>().basePath('/api');
 
@@ -220,6 +221,8 @@ app.post('/briefs/:id/refine', async (c) => {
 /**
  * Check of one listing: places it among very similar listings across France (collected by the
  * extension), then has the model judge it again with that context.
+ * The national listings are reused for SEARCH_CACHE_DAYS: called without candidates, the route
+ * answers 409 when it has none fresh, and the app then collects them.
  */
 app.post('/briefs/:id/ads/:adId/verify', async (c) => {
   const brief = await db.getBrief(c.env.DB, c.req.param('id'));
@@ -227,17 +230,30 @@ app.post('/briefs/:id/ads/:adId/verify', async (c) => {
   const ad = await db.getAd(c.env.DB, brief.id, c.req.param('adId'));
   if (!ad) return c.json({ error: 'Annonce introuvable' }, 404);
   const input = z
-    .object({ query: SearchSchema, candidates: z.array(AdSchema).max(300) })
+    .object({ query: SearchSchema, candidates: z.array(AdSchema).max(300).optional() })
     .parse(await c.req.json());
+  const at = new Date().toISOString();
+  const key = buildSearchUrl(input.query, null);
+  let candidates: Ad[];
+  let searchedAt: string;
+  if (input.candidates) {
+    candidates = input.candidates;
+    searchedAt = at;
+    if (candidates.length) await db.putCachedSearch(c.env.DB, key, candidates, at);
+  } else {
+    const cached = await db.getCachedSearch(c.env.DB, key, SEARCH_CACHE_DAYS);
+    if (!cached) return c.json({ error: 'Annonces à collecter', needCandidates: true }, 409);
+    candidates = cached.ads;
+    searchedAt = cached.at;
+  }
   const current = await db.latestPlan(c.env.DB, brief.id);
   const exclude = [...new Set(current?.plan.searches.flatMap((s) => s.exclude_keywords) ?? [])];
-  const at = new Date().toISOString();
-  const comparison = compare(ad, input.candidates, input.query, exclude, at);
-  const { kept } = comparables(ad, input.candidates, exclude);
+  const comparison = compare(ad, candidates, input.query, exclude, at);
+  const { kept } = comparables(ad, candidates, exclude);
   // Saved first: the price comparison stays useful even if the model call fails.
   if (comparison) await db.saveComparison(c.env.DB, brief.id, ad.id, comparison);
   const result = await verifyAd(c.env, brief.prompt, current?.plan ?? null, ad, comparison, comparison ? kept : []);
-  const verification = { ...result, at, comparables: comparison?.count ?? 0, match: comparison?.match ?? null };
+  const verification = { ...result, at, searchedAt, comparables: comparison?.count ?? 0, match: comparison?.match ?? null };
   await db.saveVerification(c.env.DB, brief.id, ad.id, comparison, verification);
   return c.json(verification);
 });
