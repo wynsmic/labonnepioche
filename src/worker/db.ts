@@ -330,3 +330,10 @@ export async function pruneUnseen(db: D1Database, briefId: string, since: string
 export async function saveSellerCheck(db: D1Database, briefId: string, adId: string, check: SellerCheck): Promise<void> {
   await db.prepare('UPDATE ads SET seller_check = ? WHERE brief_id = ? AND id = ?').bind(JSON.stringify(check), briefId, adId).run();
 }
+
+export async function setSellerId(db: D1Database, briefId: string, adId: string, sellerId: string): Promise<void> {
+  await db
+    .prepare("UPDATE ads SET data = json_set(data, '$.sellerId', ?) WHERE brief_id = ? AND id = ?")
+    .bind(sellerId, briefId, adId)
+    .run();
+}

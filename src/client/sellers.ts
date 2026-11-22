@@ -2,7 +2,7 @@ import { estimateAll, type KnownPrices } from '../shared/estimate';
 import { SELLER_CHECK_DISCOUNT, profileUrl, type SellerCheck } from '../shared/seller';
 import { verdictOf, type StoredAd } from '../shared/types';
 import { api } from './api';
-import { readProfile } from './extension';
+import { readOwner, readProfile } from './extension';
 
 export function knownPrices(ads: StoredAd[]): Map<string, KnownPrices> {
   return new Map(
@@ -22,7 +22,7 @@ export function knownPrices(ads: StoredAd[]): Map<string, KnownPrices> {
 export function strikingDeals(ads: StoredAd[]): StoredAd[] {
   const estimates = estimateAll(ads, knownPrices(ads));
   return ads.filter((ad) => {
-    if (!ad.sellerId || ad.price == null || verdictOf(ad)?.verdict === 'hors_sujet') return false;
+    if (ad.price == null || verdictOf(ad)?.verdict === 'hors_sujet') return false;
     const fromRules = estimates.get(ad.id)?.discount ?? null;
     const market = ad.analysis?.market_price;
     const fromAi = market ? Math.round(((market - ad.price) / market) * 100) : null;
@@ -32,18 +32,26 @@ export function strikingDeals(ads: StoredAd[]): StoredAd[] {
 
 /** Reads the seller's public profile in this browser and has it judged. */
 export async function checkSeller(briefId: string, ad: StoredAd): Promise<SellerCheck> {
-  if (!ad.sellerId) throw new Error('Vendeur inconnu pour cette annonce : relance « Récupérer les annonces ».');
-  const page = await readProfile(profileUrl(ad.sellerId));
+  const message = (reason: string) =>
+    reason === 'unknown-message'
+      ? 'Recharge l’extension (version 0.3.1) dans chrome://extensions.'
+      : reason === 'captcha'
+        ? 'Leboncoin a demandé une vérification. Réessaie dans un moment.'
+        : reason;
+  // Listings read before the seller's id was collected: it is on the listing page.
+  let sellerId = ad.sellerId ?? null;
+  if (!sellerId) {
+    const owner = await readOwner(ad.url);
+    if (!owner.ok) throw new Error(`Vendeur introuvable sur l’annonce (${message(owner.reason)}).`);
+    sellerId = owner.sellerId;
+  }
+  const page = await readProfile(profileUrl(sellerId));
   if (!page.ok) {
     throw new Error(
-      page.reason === 'unknown-message'
-        ? 'Recharge l’extension (version 0.3) dans chrome://extensions.'
-        : page.reason === 'captcha'
-          ? 'Leboncoin a demandé une vérification. Réessaie dans un moment.'
-          : `Profil du vendeur illisible (${page.reason}).`,
+      page.reason === 'unknown-message' || page.reason === 'captcha' ? message(page.reason) : `Profil du vendeur illisible (${page.reason}).`,
     );
   }
-  return api.sellerCheck(briefId, ad.id, page);
+  return api.sellerCheck(briefId, ad.id, { ...page, sellerId });
 }
 
 /** Checks the sellers of the striking deals not checked yet (a few, paced). */

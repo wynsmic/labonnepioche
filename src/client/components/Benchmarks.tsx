@@ -4,6 +4,7 @@ import { comparableQuery, numberFrom } from '../../shared/compare';
 import { verdictOf, type Search, type StoredAd } from '../../shared/types';
 import type { Estimate } from '../../shared/estimate';
 import { describeCurve } from '../../shared/depreciation';
+import { SELLER_CHECK_DISCOUNT } from '../../shared/seller';
 
 const euro = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
 const int = new Intl.NumberFormat('fr-FR');
@@ -150,6 +151,7 @@ export function Benchmarks({
   // Comparisons saved before required_groups existed lack it.
   const query = c?.query ? { ...c.query, required_groups: c.query.required_groups ?? [] } : comparableQuery(ad, category);
   const motor = c?.match === 'motorisation' ? ' même moteur' : '';
+  const striking = (estimate?.discount ?? 0) >= SELLER_CHECK_DISCOUNT;
 
   return (
     <aside className="bench" aria-label="Prix et vérification">
@@ -225,7 +227,10 @@ export function Benchmarks({
             {sc.badges.length > 0 && <span className="tip-line">• {sc.badges.join(', ')}</span>}
           </span>
         </div>
-      ) : null}
+      ) : (
+        (striking || verdictOf(ad)?.verdict === 'suspect') &&
+        !busy && <div className="small seller-attention">⚠ Vendeur non vérifié</div>
+      )}
 
       {drop > 0 && <div className="small good">Baisse de {euro.format(drop)} depuis la 1re lecture</div>}
 
@@ -251,9 +256,9 @@ export function Benchmarks({
                 Vérifier
               </button>
             )}
-            {!sc && ad.sellerId && (
+            {!sc && (
               <button type="button" className="link small" disabled={locked} onClick={onCheckSeller}>
-                Vendeur
+                Vérifier le vendeur
               </button>
             )}
           </div>

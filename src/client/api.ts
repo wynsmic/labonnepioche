@@ -53,8 +53,13 @@ export const api = {
   /** Without candidates, uses national listings read in the last 3 days (409 when there are none). */
   verify: (id: string, adId: string, query: Search, candidates?: Ad[]) =>
     call<Verification>('POST', `/briefs/${id}/ads/${adId}/verify`, { query, candidates }),
-  sellerCheck: (id: string, adId: string, profile: { memberSince: string | null; totalAds: number | null; badges: string[]; ads: unknown[] }) =>
+  sellerCheck: (
+    id: string,
+    adId: string,
+    profile: { sellerId: string; memberSince: string | null; totalAds: number | null; badges: string[]; ads: unknown[] },
+  ) =>
     call<SellerCheck>('POST', `/briefs/${id}/ads/${adId}/seller`, {
+      sellerId: profile.sellerId,
       memberSince: profile.memberSince,
       totalAds: profile.totalAds,
       badges: profile.badges,

@@ -41,3 +41,8 @@ export type ProfileResult =
 export function readProfile(url: string): Promise<ProfileResult> {
   return send<ProfileResult>({ type: 'profile', url });
 }
+
+/** Opens a Leboncoin listing in a background tab of this browser and reads its seller's account id. */
+export function readOwner(url: string): Promise<{ ok: true; sellerId: string } | { ok: false; reason: string }> {
+  return send({ type: 'owner', url });
+}

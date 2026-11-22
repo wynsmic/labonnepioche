@@ -277,9 +277,11 @@ app.post('/briefs/:id/ads/:adId/verify', async (c) => {
 app.post('/briefs/:id/ads/:adId/seller', async (c) => {
   const briefId = c.req.param('id');
   const ad = await db.getAd(c.env.DB, briefId, c.req.param('adId'));
-  if (!ad?.sellerId) return c.json({ error: 'Vendeur inconnu pour cette annonce (relance « Récupérer »)' }, 404);
-  const profile = SellerProfileSchema.parse(await c.req.json());
-  const check = assessSeller(profile, profileUrl(ad.sellerId), ad.title);
+  if (!ad) return c.json({ error: 'Annonce introuvable' }, 404);
+  const body = SellerProfileSchema.extend({ sellerId: z.string().regex(/^[\w-]{6,80}$/) }).parse(await c.req.json());
+  // Listings read before the seller's id was collected learn it now.
+  if (!ad.sellerId) await db.setSellerId(c.env.DB, briefId, ad.id, body.sellerId);
+  const check = assessSeller(body, profileUrl(ad.sellerId ?? body.sellerId), ad.title);
   await db.saveSellerCheck(c.env.DB, briefId, ad.id, check);
   return c.json(check);
 });

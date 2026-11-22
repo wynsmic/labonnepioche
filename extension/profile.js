@@ -62,3 +62,36 @@ export function extractProfile() {
     for (const key of Object.keys(node)) collect(node[key], depth + 1, out);
   }
 }
+
+/**
+ * Runs inside a Leboncoin listing page (/ad/...): the seller's account id, from the embedded data.
+ * @returns {{ ok: true, sellerId: string } | { ok: false, reason: string }}
+ */
+export function extractOwner() {
+  if (document.querySelector('iframe[src*="captcha-delivery"], iframe[src*="datadome"], iframe[src*="captcha"]')) {
+    return { ok: false, reason: 'captcha' };
+  }
+  const script = document.getElementById('__NEXT_DATA__');
+  if (!script || !script.textContent) return { ok: false, reason: 'no-data' };
+  let data;
+  try {
+    data = JSON.parse(script.textContent);
+  } catch {
+    return { ok: false, reason: 'bad-json' };
+  }
+  const id = find(data, 0);
+  return id ? { ok: true, sellerId: id } : { ok: false, reason: 'no-owner' };
+
+  /** The `user_id` of the first `owner` object (the listing's seller). */
+  function find(node, depth) {
+    if (!node || depth > 14 || typeof node !== 'object') return null;
+    if (!Array.isArray(node) && node.owner && typeof node.owner === 'object' && node.owner.user_id) {
+      return String(node.owner.user_id);
+    }
+    for (const value of Array.isArray(node) ? node : Object.values(node)) {
+      const found = find(value, depth + 1);
+      if (found) return found;
+    }
+    return null;
+  }
+}

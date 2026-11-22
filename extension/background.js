@@ -3,10 +3,11 @@
 //   { type: 'fetch', url }      -> { ok: true, ads } | { ok: false, reason }
 //   { type: 'profile', url }    -> { ok: true, memberSince, totalAds, badges, ads, text } | { ok: false, reason }
 //                                  (public seller profile pages only)
+//   { type: 'owner', url }      -> { ok: true, sellerId } | { ok: false, reason }   (listing pages only)
 // Each fetch opens the Leboncoin page in a background tab of THIS browser, reads the
 // listings it displays, then closes the tab. The app paces the requests.
 import { extractAdsFromPage } from './extract.js';
-import { extractProfile } from './profile.js';
+import { extractOwner, extractProfile } from './profile.js';
 
 const LOAD_TIMEOUT_MS = 30_000;
 const CAPTCHA_TIMEOUT_MS = 120_000;
@@ -24,6 +25,12 @@ chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) =>
   }
   if (message?.type === 'profile' && typeof message.url === 'string') {
     readProfile(message.url)
+      .then(sendResponse)
+      .catch((err) => sendResponse({ ok: false, reason: String(err?.message ?? err) }));
+    return true;
+  }
+  if (message?.type === 'owner' && typeof message.url === 'string') {
+    readOwner(message.url)
       .then(sendResponse)
       .catch((err) => sendResponse({ ok: false, reason: String(err?.message ?? err) }));
     return true;
@@ -49,6 +56,15 @@ async function readProfile(url) {
     return { ok: false, reason: 'not-a-profile' };
   }
   return readInTab(url, extractProfile);
+}
+
+async function readOwner(url) {
+  const parsed = new URL(url);
+  // Only listing pages.
+  if (parsed.hostname !== 'www.leboncoin.fr' || !parsed.pathname.startsWith('/ad/')) {
+    return { ok: false, reason: 'not-a-listing' };
+  }
+  return readInTab(url, extractOwner);
 }
 
 /** Opens the page in a background tab, runs `func` in it (bringing the tab forward for a captcha), closes it. */
