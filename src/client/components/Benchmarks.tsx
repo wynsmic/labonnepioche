@@ -3,6 +3,7 @@ import { buildSearchUrl } from '../../shared/leboncoin';
 import { comparableQuery, numberFrom } from '../../shared/compare';
 import type { Search, StoredAd } from '../../shared/types';
 import { VERDICT_LABEL } from './AdList';
+import type { Estimate } from '../../shared/estimate';
 
 const euro = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
 const int = new Intl.NumberFormat('fr-FR');
@@ -105,12 +106,15 @@ function CompareForm({
  */
 export function Benchmarks({
   ad,
+  estimate,
   category,
   busy,
   locked,
   onCheck,
 }: {
   ad: StoredAd;
+  /** Quick rule-based discount, shown before any check. */
+  estimate: Estimate | null;
   category: number;
   /** Current step while this listing is being checked. */
   busy: string | null;
@@ -140,12 +144,33 @@ export function Benchmarks({
         )}
       </div>
 
+      {estimate && (
+        <div className="has-tip" tabIndex={0}>
+          <span className={`target ${estimate.discount >= 10 ? 'good' : estimate.discount < 0 ? 'bad' : ''}`}>
+            {estimate.discount > 0 ? '−' : '+'}
+            {Math.abs(estimate.discount)} %
+          </span>{' '}
+          <span className="small muted">
+            {estimate.discount > 0 ? 'sous le prix attendu' : 'au-dessus du prix attendu'}
+            {estimate.basis === 'ia' ? ' (IA)' : ''}
+          </span>
+          <span className="tip small" role="tooltip">
+            {estimate.factors.map((f) => (
+              <span key={f} className="tip-line">
+                {f}
+              </span>
+            ))}
+            <span className="tip-line muted-tip">Estimation rapide par règles moyennes (année, km, équipement)</span>
+          </span>
+        </div>
+      )}
+
       {busy ? (
         <div className="small muted">{busy}</div>
       ) : v ? (
         <>
           <div className={`check-verdict v-text-${v.verdict}`}>{VERDICT_LABEL[v.verdict]}</div>
-          <div className="check-cause small" tabIndex={0}>
+          <div className="check-cause has-tip small" tabIndex={0}>
             {v.cause}
             <span className="tip" role="tooltip">
               {v.detail}

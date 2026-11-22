@@ -170,8 +170,12 @@ label { font-weight: 500; }
 .v-text-cher { color: var(--v-bad); }
 .v-text-suspect { color: var(--v-suspect); }
 .v-text-hors_sujet { color: var(--muted); }
-.check-cause { position: relative; font-weight: 600; cursor: help; text-decoration: underline dotted; text-underline-offset: 3px; }
-.check-cause .tip { display: none; position: absolute; z-index: 5; right: 0; top: calc(100% + 6px); width: 280px; padding: 8px 10px; border-radius: 8px; background: var(--ink); color: var(--card); font-weight: 400; line-height: 1.4; box-shadow: 0 4px 16px rgb(0 0 0 / .25); text-decoration: none; }
-.check-cause:hover .tip, .check-cause:focus .tip { display: block; }
+.has-tip { position: relative; cursor: help; }
+.check-cause { font-weight: 600; text-decoration: underline dotted; text-underline-offset: 3px; }
+.has-tip .tip { display: none; position: absolute; z-index: 5; right: 0; top: calc(100% + 6px); width: 280px; padding: 8px 10px; border-radius: 8px; background: var(--ink); color: var(--card); font-weight: 400; line-height: 1.4; box-shadow: 0 4px 16px rgb(0 0 0 / .25); text-decoration: none; }
+.has-tip:hover .tip, .has-tip:focus .tip { display: block; }
+.tip-line { display: block; }
+.tip .muted-tip { opacity: .7; margin-top: 4px; }
+.target { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .check-market summary { cursor: pointer; }
 .check-market > div, .check-market > ul, .check-market > a { margin-top: 4px; }

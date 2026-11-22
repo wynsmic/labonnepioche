@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { Search, StoredAd, Verdict } from '../../shared/types';
 import { Benchmarks } from './Benchmarks';
 import { ageInDays } from '../../shared/compare';
+import { estimateAll } from '../../shared/estimate';
 
 export const VERDICT_LABEL: Record<Verdict, string> = {
   pepite: 'Pépite',
@@ -12,7 +13,7 @@ export const VERDICT_LABEL: Record<Verdict, string> = {
   hors_sujet: 'Hors sujet',
 };
 
-type Sort = 'score' | 'price' | 'recent';
+type Sort = 'score' | 'discount' | 'price' | 'recent';
 
 /** Listings with an unknown date stay visible. */
 export function isRecent(ad: StoredAd, maxAgeDays: number | null): boolean {
@@ -63,6 +64,11 @@ export function AdList({
   const [showHidden, setShowHidden] = useState(false);
   const [onlyFavorites, setOnlyFavorites] = useState(false);
 
+  const estimates = useMemo(
+    () => estimateAll(ads, new Map(ads.map((a) => [a.id, a.analysis?.market_price ?? null]))),
+    [ads],
+  );
+
   const shown = useMemo(() => {
     const list = ads.filter(
       (a) => (showHidden || !a.hidden) && (!onlyFavorites || a.favorite) && isRecent(a, maxAgeDays),
@@ -71,11 +77,13 @@ export function AdList({
     return [...list].sort((a, b) =>
       sort === 'score'
         ? byScore(b) - byScore(a)
-        : sort === 'price'
+        : sort === 'discount'
+          ? (estimates.get(b.id)?.discount ?? -Infinity) - (estimates.get(a.id)?.discount ?? -Infinity)
+          : sort === 'price'
           ? (a.price ?? Infinity) - (b.price ?? Infinity)
           : (b.date ?? '').localeCompare(a.date ?? ''),
     );
-  }, [ads, sort, showHidden, onlyFavorites, maxAgeDays]);
+  }, [ads, sort, showHidden, onlyFavorites, maxAgeDays, estimates]);
   const tooOld = ads.filter((a) => !a.hidden && !isRecent(a, maxAgeDays)).length;
 
   if (!ads.length) {
@@ -109,6 +117,7 @@ export function AdList({
           Trier par{' '}
           <select value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
             <option value="score">intérêt</option>
+            <option value="discount">décote estimée</option>
             <option value="price">prix</option>
             <option value="recent">date</option>
           </select>
@@ -175,6 +184,7 @@ export function AdList({
             </a>
             <Benchmarks
               ad={ad}
+              estimate={estimates.get(ad.id) ?? null}
               category={categoryOf(ad)}
               busy={checking?.id === ad.id ? checking.step : null}
               locked={checking != null}
