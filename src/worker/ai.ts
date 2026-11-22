@@ -10,6 +10,7 @@ import {
   type Refine,
 } from '../shared/types';
 import { ageInDays, numberFrom, type Comparison } from '../shared/compare';
+import { adjustPrice, describeCurve } from '../shared/depreciation';
 import { llm, type Env } from './llm';
 
 const PREPARE_SYSTEM = `Tu aides un particulier à dénicher de vraies bonnes affaires sur Leboncoin (France).
@@ -120,6 +121,9 @@ const VERIFY_SYSTEM = `Tu vérifies UNE annonce Leboncoin qui semble être une b
 On te donne sa demande, la shortlist des seuls choix acceptés, l'annonce, et une comparaison avec des annonces
 de particuliers très proches partout en France (même modèle, années et kilométrage voisins ; même motorisation
 quand le champ « niveau » vaut « motorisation », sinon motorisation non garantie).
+Les prix du marché (médiane, fourchette, min, max) sont ramenés à l'année et au kilométrage de l'annonce
+par une loi de décote (champ « loi_de_decote ») ; les annonces comparables gardent leur prix affiché et
+leur prix ajusté. Raisonne sur les prix ajustés.
 Juge à nouveau l'annonce avec ce contexte :
 - Le prix : écart à la médiane et à la fourchette habituelle, en tenant compte du kilométrage, de l'année,
   de l'équipement et de l'état décrit, comparés aux annonces similaires.
@@ -167,6 +171,8 @@ export async function verifyAd(
         min: comparison.min,
         max: comparison.max,
         part_plus_cheres_que_cette_annonce_pct: comparison.cheaperThan,
+        prix_ramenes_a: comparison.adjustedTo ?? null,
+        loi_de_decote: comparison.curve ? describeCurve(comparison.curve) : 'aucune (prix bruts)',
         km_median: comparison.medianMileage,
         annee_mediane: comparison.medianYear,
       }
@@ -175,7 +181,15 @@ export async function verifyAd(
   const sample = [...comparablesList]
     .sort((x, y) => Math.abs((x.price ?? 0) - (ad.price ?? 0)) - Math.abs((y.price ?? 0) - (ad.price ?? 0)))
     .slice(0, 25)
-    .map(compactComparable);
+    .map((c) => ({
+      ...compactComparable(c),
+      prix_ajuste:
+        comparison?.curve && comparison.adjustedTo && c.price != null
+          ? Math.round(
+              adjustPrice(c.price, { year: Number(String(numberFrom(c.attributes.regdate) ?? '').slice(0, 4)) || null, km: numberFrom(c.attributes.mileage) }, comparison.adjustedTo, comparison.curve),
+            )
+          : null,
+    }));
   return llm(env).structured(VerificationSchema, {
     system: VERIFY_SYSTEM,
     user: [

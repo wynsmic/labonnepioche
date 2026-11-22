@@ -1,5 +1,6 @@
 import { isExcluded } from './leboncoin';
 import type { Ad, Search } from './types';
+import { adjustPrice, fitCurve, type Curve } from './depreciation';
 
 /** How a listing compares with very similar ones across France. */
 export interface Comparison {
@@ -20,10 +21,16 @@ export interface Comparison {
   match: 'motorisation' | 'modele';
   /** Engine of the checked listing as read from its text, e.g. "1.5 dci 110 ch". */
   engine: string | null;
-  /** Sorted prices, for the strip chart. */
+  /**
+   * Prices are brought to this listing's year and mileage with the depreciation law (absent on
+   * comparisons saved before that existed: raw prices then).
+   */
+  adjustedTo?: { year: number | null; km: number | null };
+  curve?: Curve;
+  /** Sorted prices (adjusted), for the strip chart. */
   prices: number[];
   /** The cheapest comparable listings, for a look. */
-  cheapest: { title: string; price: number; mileage: number | null; year: number | null; city: string | null; url: string }[];
+  cheapest: { title: string; price: number; adjusted?: number; mileage: number | null; year: number | null; city: string | null; url: string }[];
 }
 
 export const MIN_COMPARABLES = 5;
@@ -175,9 +182,15 @@ export function compare(ad: Ad, candidates: Ad[], query: Search, excludeKeywords
   if (ad.price == null) return null;
   const { kept, match, engine } = comparables(ad, candidates, excludeKeywords);
   if (kept.length < MIN_COMPARABLES) return null;
-  const prices = kept.map((c) => c.price!).sort((x, y) => x - y);
+  // Each comparable's price as if it had this listing's year and mileage.
+  const to = { year: Number(yearOf(ad)) || null, km: mileageOf(ad) };
+  const curve = fitCurve(kept.map((c) => ({ price: c.price!, year: Number(yearOf(c)) || null, km: mileageOf(c) })));
+  const adjusted = new Map(
+    kept.map((c) => [c.id, Math.round(adjustPrice(c.price!, { year: Number(yearOf(c)) || null, km: mileageOf(c) }, to, curve))]),
+  );
+  const prices = [...adjusted.values()].sort((x, y) => x - y);
   const pricier = prices.filter((p) => p > ad.price!).length;
-  const cheapest = [...kept].sort((x, y) => x.price! - y.price!).slice(0, 5);
+  const cheapest = [...kept].sort((x, y) => adjusted.get(x.id)! - adjusted.get(y.id)!).slice(0, 5);
   return {
     at,
     query,
@@ -190,12 +203,15 @@ export function compare(ad: Ad, candidates: Ad[], query: Search, excludeKeywords
     cheaperThan: Math.round((pricier / prices.length) * 100),
     match,
     engine: describeEngine(engine),
+    adjustedTo: to,
+    curve,
     medianMileage: median(kept.map(mileageOf).filter((m): m is number => m != null)),
     medianYear: median(kept.map((c) => Number(yearOf(c))).filter((y) => y > 0)),
     prices,
     cheapest: cheapest.map((c) => ({
       title: c.title,
       price: c.price!,
+      adjusted: adjusted.get(c.id)!,
       mileage: mileageOf(c),
       year: Number(yearOf(c)) || null,
       city: c.city,

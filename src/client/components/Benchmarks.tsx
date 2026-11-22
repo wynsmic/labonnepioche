@@ -4,6 +4,7 @@ import { comparableQuery, numberFrom } from '../../shared/compare';
 import type { Search, StoredAd } from '../../shared/types';
 import { VERDICT_LABEL } from './AdList';
 import type { Estimate } from '../../shared/estimate';
+import { describeCurve } from '../../shared/depreciation';
 
 const euro = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
 const int = new Intl.NumberFormat('fr-FR');
@@ -215,6 +216,19 @@ export function Benchmarks({
             Moins cher que <strong>{c.cheaperThan} %</strong> des {c.count} annonces
             {c.engine ? ` (${c.engine})` : ''}
           </div>
+          {c.adjustedTo && c.curve && (
+            <div className="has-tip muted" tabIndex={0}>
+              Prix ramenés à{' '}
+              {[c.adjustedTo.year, c.adjustedTo.km != null ? `${int.format(c.adjustedTo.km)} km` : null]
+                .filter(Boolean)
+                .join(' et ')}{' '}
+              ⓘ
+              <span className="tip" role="tooltip">
+                Chaque annonce comparée est corrigée de son écart d’année et de kilométrage avec celle-ci. Loi de décote :{' '}
+                {describeCurve(c.curve)}.
+              </span>
+            </div>
+          )}
           <Strip prices={c.prices} price={price} median={c.median} />
           <div className="muted">
             Médiane {euro.format(c.median)} · habituel {euro.format(c.p25)}–{euro.format(c.p75)}
@@ -234,7 +248,8 @@ export function Benchmarks({
               <li key={x.url}>
                 <a href={x.url} target="_blank" rel="noreferrer">
                   {euro.format(x.price)}
-                </a>{' '}
+                </a>
+                {x.adjusted != null && x.adjusted !== x.price && <span className="muted"> (≈ {euro.format(x.adjusted)} ajusté)</span>}{' '}
                 · {x.year ?? '?'} · {x.mileage != null ? `${int.format(x.mileage)} km` : '?'} · {x.city ?? ''}
               </li>
             ))}

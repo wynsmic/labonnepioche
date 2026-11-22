@@ -234,6 +234,8 @@ app.post('/briefs/:id/ads/:adId/verify', async (c) => {
   const at = new Date().toISOString();
   const comparison = compare(ad, input.candidates, input.query, exclude, at);
   const { kept } = comparables(ad, input.candidates, exclude);
+  // Saved first: the price comparison stays useful even if the model call fails.
+  if (comparison) await db.saveComparison(c.env.DB, brief.id, ad.id, comparison);
   const result = await verifyAd(c.env, brief.prompt, current?.plan ?? null, ad, comparison, comparison ? kept : []);
   const verification = { ...result, at, comparables: comparison?.count ?? 0, match: comparison?.match ?? null };
   await db.saveVerification(c.env.DB, brief.id, ad.id, comparison, verification);

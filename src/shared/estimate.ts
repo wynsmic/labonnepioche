@@ -1,12 +1,14 @@
 import { numberFrom } from './compare';
 import type { Ad } from './types';
+import { adjustPrice, describeCurve, fitCurve } from './depreciation';
 
 /**
  * Quick estimate of the discount of a listing against its expected market price, with average
  * used-car rules (no AI, no extra request):
- * - every comparable listing collected for the hunt is brought back to a common basis
- *   (new, 0 km, no options) by dividing its price by its year, mileage and options factors;
- * - the median of those normalized prices, times this listing's own factors, is its expected price.
+ * - every collected listing of the same model is brought to this listing's year and mileage with
+ *   the depreciation law (fitted on those listings when there are enough, see depreciation.ts),
+ *   and to its equipment with the options rules;
+ * - the median of those adjusted prices is its expected price.
  * Falls back to the AI market estimate when too few comparable listings were collected.
  */
 export interface Estimate {
@@ -20,11 +22,6 @@ export interface Estimate {
 }
 
 export const MIN_PEERS = 4;
-
-/** Average yearly loss of value (≈ 10 %/an in France for a mainstream car). */
-const YEARLY = 0.9;
-/** Mileage: ≈ −2.5 % per 10 000 km (exp(−km / 400 000)). */
-const KM_SCALE = 400_000;
 
 /** Signs in the text that move the price, in % (average effect, capped overall). */
 const OPTION_RULES: { label: string; pct: number; re: RegExp }[] = [
@@ -63,21 +60,7 @@ function options(ad: Ad): { factor: number; hits: { label: string; pct: number }
   return { factor: 1 + (plus + minus) / 100, hits };
 }
 
-/** Value of this listing relative to a new, 0 km, option-less one. */
-function factor(ad: Ad, now: number) {
-  const year = yearOf(ad);
-  const km = numberFrom(ad.attributes.mileage);
-  const age = year ? Math.max(0, now - year + 0.5) : null;
-  const opt = options(ad);
-  return {
-    year,
-    km,
-    yearFactor: age != null ? YEARLY ** age : 1,
-    kmFactor: km != null ? Math.exp(-km / KM_SCALE) : 1,
-    opt,
-    total: (age != null ? YEARLY ** age : 1) * (km != null ? Math.exp(-km / KM_SCALE) : 1) * opt.factor,
-  };
-}
+const kmOf = (ad: Ad) => numberFrom(ad.attributes.mileage);
 
 const key = (ad: Ad) =>
   fold(`${ad.attributes.brand ?? ''} ${ad.attributes.model ?? ''}`).trim() || null;
@@ -91,51 +74,54 @@ function median(values: number[]): number {
 const int = new Intl.NumberFormat('fr-FR');
 
 /** Estimates for every listing, keyed by id (peers = the other collected listings of the same model and fuel). */
-export function estimateAll(ads: Ad[], marketByAi: Map<string, number | null>, now = new Date().getFullYear()): Map<string, Estimate> {
+export function estimateAll(ads: Ad[], marketByAi: Map<string, number | null>): Map<string, Estimate> {
+  const groupOf = (ad: Ad) => `${key(ad)}|${(ad.attributes.fuel ?? '').toLowerCase()}`;
   const usable = ads.filter((a) => a.price != null && a.price >= 500 && a.seller !== 'pro' && key(a));
-  const groups = new Map<string, { ad: Ad; normalized: number; f: ReturnType<typeof factor> }[]>();
+  const groups = new Map<string, Ad[]>();
   for (const ad of usable) {
-    const f = factor(ad, now);
-    const g = `${key(ad)}|${(ad.attributes.fuel ?? '').toLowerCase()}`;
+    const g = groupOf(ad);
     if (!groups.has(g)) groups.set(g, []);
-    groups.get(g)!.push({ ad, normalized: ad.price! / f.total, f });
+    groups.get(g)!.push(ad);
   }
+  const curves = new Map(
+    [...groups].map(([g, list]) => [g, fitCurve(list.map((a) => ({ price: a.price!, year: yearOf(a), km: kmOf(a) })))]),
+  );
 
   const out = new Map<string, Estimate>();
   for (const ad of ads) {
     if (ad.price == null) continue;
-    const f = factor(ad, now);
-    const g = groups.get(`${key(ad)}|${(ad.attributes.fuel ?? '').toLowerCase()}`) ?? [];
-    const peers = g.filter((p) => p.ad.id !== ad.id);
+    const peers = (groups.get(groupOf(ad)) ?? []).filter((p) => p.id !== ad.id);
+    const opt = options(ad);
+    const to = { year: yearOf(ad), km: kmOf(ad) };
     let expected: number;
     let basis: Estimate['basis'];
     const factors: string[] = [];
     if (peers.length >= MIN_PEERS) {
-      const base = median(peers.map((p) => p.normalized));
-      expected = base * f.total;
+      const curve = curves.get(groupOf(ad))!;
+      const adjusted = peers.map(
+        (p) => (adjustPrice(p.price!, { year: yearOf(p), km: kmOf(p) }, to, curve) / options(p).factor) * opt.factor,
+      );
+      expected = median(adjusted);
       basis = 'annonces';
-      // The same listing at the peers' median year and mileage, to explain the adjustments.
-      const medYear = median(peers.map((p) => p.f.year).filter((y): y is number => y != null));
-      const medKm = median(peers.map((p) => p.f.km).filter((k): k is number => k != null));
-      const medPrice = median(peers.map((p) => p.ad.price!));
-      factors.push(`Médiane de ${peers.length} annonces du même modèle : ${int.format(Math.round(medPrice))} €`);
-      if (f.year && medYear) {
-        const pct = Math.round((YEARLY ** (medYear - f.year) - 1) * 100);
-        if (pct) factors.push(`Année ${f.year} vs ${Math.round(medYear)} : ${pct > 0 ? '+' : ''}${pct} %`);
+      const medYear = median(peers.map(yearOf).filter((y): y is number => y != null));
+      const medKm = median(peers.map(kmOf).filter((k): k is number => k != null));
+      factors.push(`Médiane de ${peers.length} annonces du même modèle : ${int.format(Math.round(median(peers.map((p) => p.price!))))} €`);
+      factors.push(`Loi de décote : ${describeCurve(curve)}`);
+      if (to.year && medYear) {
+        const pct = Math.round((Math.exp(curve.perYear * (medYear - to.year)) - 1) * 100);
+        if (pct) factors.push(`Année ${to.year} vs ${Math.round(medYear)} : ${pct > 0 ? '+' : ''}${pct} %`);
       }
-      if (f.km != null && medKm) {
-        const pct = Math.round((Math.exp(-(f.km - medKm) / KM_SCALE) - 1) * 100);
-        if (pct) factors.push(`${int.format(f.km)} km vs ${int.format(Math.round(medKm))} : ${pct > 0 ? '+' : ''}${pct} %`);
+      if (to.km != null && medKm) {
+        const pct = Math.round((Math.exp((curve.per10kKm * (to.km - medKm)) / 10_000) - 1) * 100);
+        if (pct) factors.push(`${int.format(to.km)} km vs ${int.format(Math.round(medKm))} : ${pct > 0 ? '+' : ''}${pct} %`);
       }
+      for (const h of opt.hits) factors.push(`${h.label} : ${h.pct > 0 ? '+' : ''}${h.pct} %`);
     } else {
       const ai = marketByAi.get(ad.id);
       if (!ai) continue;
       expected = ai;
       basis = 'ia';
       factors.push(`Peu d’annonces du même modèle : prix de marché estimé par l’IA (${int.format(ai)} €)`);
-    }
-    if (basis === 'annonces') {
-      for (const h of f.opt.hits) factors.push(`${h.label} : ${h.pct > 0 ? '+' : ''}${h.pct} %`);
     }
     factors.push(`Prix attendu ≈ ${int.format(Math.round(expected / 50) * 50)} €`);
     out.set(ad.id, {
