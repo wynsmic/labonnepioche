@@ -21,6 +21,15 @@ export function App() {
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState<{ id: string; step: string } | null>(null);
+  /** Errors of a check, shown on the listing itself (the top banner is out of sight in the list). */
+  const [adErrors, setAdErrors] = useState<Record<string, string>>({});
+  const adError = (id: string, message: string | null) =>
+    setAdErrors((all) => {
+      const next = { ...all };
+      if (message) next[id] = message;
+      else delete next[id];
+      return next;
+    });
   /** Only recent listings by default: real deals go fast. */
   const [maxAgeDays, setMaxAgeDays] = useState<number | null>(3);
   /** Listings off the shortlist are noise: hidden unless asked for. */
@@ -87,12 +96,13 @@ export function App() {
     if (!detail || checking) return;
     const ad = detail.ads.find((a) => a.id === adId);
     if (!ad) return;
+    adError(adId, null);
     setChecking({ id: adId, step: 'Profil du vendeur…' });
     try {
       await checkSeller(detail.brief.id, ad);
       await reload();
     } catch (e) {
-      setError((e as Error).message);
+      adError(adId, (e as Error).message);
     } finally {
       setChecking(null);
     }
@@ -102,6 +112,7 @@ export function App() {
     if (!detail || checking) return;
     const ad = detail.ads.find((a) => a.id === adId);
     if (!ad) return;
+    adError(adId, null);
     try {
       // A striking deal: its seller is read first, the check takes it into account.
       if (!ad.sellerCheck && strikingDeals(detail.ads).some((a) => a.id === ad.id)) {
@@ -109,7 +120,7 @@ export function App() {
         try {
           await checkSeller(detail.brief.id, ad);
         } catch (e) {
-          setError((e as Error).message);
+          adError(adId, `Vendeur : ${(e as Error).message}`);
         }
       }
       setChecking({ id: adId, step: 'Analyse…' });
@@ -136,7 +147,7 @@ export function App() {
       }
       await reload();
     } catch (e) {
-      setError((e as Error).message);
+      adError(adId, (e as Error).message);
     } finally {
       setChecking(null);
     }
@@ -218,6 +229,7 @@ export function App() {
               checking={checking}
               onCheck={checkAd}
               onCheckSeller={checkSellerOf}
+              adErrors={adErrors}
               categoryOf={categoryOf}
               maxAgeDays={maxAgeDays}
               onMaxAgeDays={setMaxAgeDays}

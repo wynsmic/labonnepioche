@@ -127,6 +127,7 @@ export function Benchmarks({
   locked,
   onCheck,
   onCheckSeller,
+  error,
 }: {
   ad: StoredAd;
   /** Market reference of the listing (best source available). */
@@ -138,6 +139,8 @@ export function Benchmarks({
   locked: boolean;
   onCheck: (query: Search) => void;
   onCheckSeller: () => void;
+  /** Why the last check of this listing failed. */
+  error: string | null;
 }) {
   const [editing, setEditing] = useState(false);
   const c = ad.comparison;
@@ -194,8 +197,14 @@ export function Benchmarks({
         <div className="small muted">Marché inconnu : lance l’analyse ou « Vérifier »</div>
       )}
 
+      {error && !busy && (
+        <div className="small bench-error" role="alert">
+          {error}
+        </div>
+      )}
+
       {busy ? (
-        <div className="small muted">{busy}</div>
+        <div className="small muted busy-line">{busy}</div>
       ) : (
         v && (
           <div className="check-cause has-tip small" tabIndex={0}>
@@ -248,16 +257,16 @@ export function Benchmarks({
         !busy && (
           <div className="row small bench-actions">
             {v ? (
-              <button type="button" className="link small" disabled={locked} onClick={() => onCheck(query)}>
-                Revérifier
+              <button type="button" className="action" disabled={locked} onClick={() => onCheck(query)}>
+                ↻ Revérifier
               </button>
             ) : (
-              <button type="button" className="primary small" disabled={locked || price == null} onClick={() => onCheck(query)}>
-                Vérifier
+              <button type="button" className="action primary-action" disabled={locked || price == null} onClick={() => onCheck(query)}>
+                Vérifier le prix
               </button>
             )}
             {!sc && (
-              <button type="button" className="link small" disabled={locked} onClick={onCheckSeller}>
+              <button type="button" className="action" disabled={locked} onClick={onCheckSeller}>
                 Vérifier le vendeur
               </button>
             )}

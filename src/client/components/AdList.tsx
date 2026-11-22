@@ -96,6 +96,7 @@ export function AdList({
   checking,
   onCheck,
   onCheckSeller,
+  adErrors,
   categoryOf,
   maxAgeDays,
   onMaxAgeDays,
@@ -109,6 +110,7 @@ export function AdList({
   checking: { id: string; step: string } | null;
   onCheck: (adId: string, query: Search) => void;
   onCheckSeller: (adId: string) => void;
+  adErrors: Record<string, string>;
   categoryOf: (ad: StoredAd) => number;
   maxAgeDays: number | null;
   onMaxAgeDays: (days: number | null) => void;
@@ -284,6 +286,7 @@ export function AdList({
               locked={checking != null}
               onCheck={(query) => onCheck(ad.id, query)}
               onCheckSeller={() => onCheckSeller(ad.id)}
+              error={adErrors[ad.id] ?? null}
             />
             </div>
             <div className="ad-actions">

@@ -2,7 +2,7 @@ import { estimateAll, type KnownPrices } from '../shared/estimate';
 import { SELLER_CHECK_DISCOUNT, profileUrl, type SellerCheck } from '../shared/seller';
 import { verdictOf, type StoredAd } from '../shared/types';
 import { api } from './api';
-import { readOwner, readProfile } from './extension';
+import { extensionReady, readOwner, readProfile } from './extension';
 
 export function knownPrices(ads: StoredAd[]): Map<string, KnownPrices> {
   return new Map(
@@ -32,6 +32,9 @@ export function strikingDeals(ads: StoredAd[]): StoredAd[] {
 
 /** Reads the seller's public profile in this browser and has it judged. */
 export async function checkSeller(briefId: string, ad: StoredAd): Promise<SellerCheck> {
+  if (!(await extensionReady())) {
+    throw new Error('Extension Affaires introuvable dans ce navigateur : installe-la ou recharge-la (chrome://extensions).');
+  }
   const message = (reason: string) =>
     reason === 'unknown-message'
       ? 'Recharge l’extension (version 0.3.1) dans chrome://extensions.'
