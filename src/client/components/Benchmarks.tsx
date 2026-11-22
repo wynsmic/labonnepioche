@@ -137,7 +137,8 @@ export function Benchmarks({
   const year = numberFrom(ad.attributes.regdate);
   const days = daysSince(ad.date);
   const drop = ad.firstPrice != null && price != null && ad.firstPrice > price ? ad.firstPrice - price : 0;
-  const query = c?.query ?? comparableQuery(ad, category);
+  // Comparisons saved before required_groups existed lack it.
+  const query = c?.query ? { ...c.query, required_groups: c.query.required_groups ?? [] } : comparableQuery(ad, category);
 
   return (
     <aside className="bench" aria-label="Vérification">

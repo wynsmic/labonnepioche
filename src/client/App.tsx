@@ -3,7 +3,7 @@ import { buildSearchUrl } from '../shared/leboncoin';
 import type { Ad, Brief, Search, StoredAd } from '../shared/types';
 import { extensionReady, fetchListings } from './extension';
 import { ApiError, api, type BriefDetail } from './api';
-import { AdList, isRecent } from './components/AdList';
+import { AdList, isOffTopic, isRecent } from './components/AdList';
 import { AdMap } from './components/AdMap';
 import { HuntPanel } from './components/HuntPanel';
 import { Login } from './components/Login';
@@ -22,6 +22,8 @@ export function App() {
   const [checking, setChecking] = useState<{ id: string; step: string } | null>(null);
   /** Only recent listings by default: real deals go fast. */
   const [maxAgeDays, setMaxAgeDays] = useState<number | null>(3);
+  /** Listings off the shortlist are noise: hidden unless asked for. */
+  const [showOffTopic, setShowOffTopic] = useState(false);
 
   const checkSession = useCallback(async () => {
     try {
@@ -193,11 +195,13 @@ export function App() {
               categoryOf={categoryOf}
               maxAgeDays={maxAgeDays}
               onMaxAgeDays={setMaxAgeDays}
+              showOffTopic={showOffTopic}
+              onShowOffTopic={setShowOffTopic}
             />
           </section>
           <aside className="right">
             <AdMap
-              ads={detail.ads.filter((a) => isRecent(a, maxAgeDays))}
+              ads={detail.ads.filter((a) => isRecent(a, maxAgeDays) && (showOffTopic || !isOffTopic(a) || a.favorite))}
               highlighted={highlighted}
               onSelect={setHighlighted}
             />

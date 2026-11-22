@@ -19,6 +19,11 @@ export const SearchSchema = z.object({
   mileage_max: z.number().int().nullable(),
   regdate_min: z.number().int().nullable().describe('Année minimum de mise en circulation, sinon null'),
   regdate_max: z.number().int().nullable(),
+  required_groups: z
+    .array(z.array(z.string()))
+    .describe(
+      'Pour ne garder que la VERSION de la shortlist sans restreindre la recherche Leboncoin : chaque groupe est une liste de synonymes dont au moins un doit figurer dans l’annonce (titre, description ou caractéristiques). Ex. Corolla Touring Sports hybride : [["touring", "ts", "break", "sw"], ["hybride", "hybrid", "hsd"]]. Seulement des mots que presque toutes les annonces de cette version contiennent (carrosserie, carburant ou type de motorisation : « break », « hybride »). Jamais de cylindrée, de puissance ni de finition (beaucoup de vendeurs les omettent : l’analyse les vérifie). Pas d’année ni de prix. [] si le modèle suffit',
+    ),
   exclude_keywords: z
     .array(z.string())
     .describe(
@@ -138,4 +143,11 @@ export interface Brief {
   zone: string | null;
   locations: string | null;
   updatedAt: string;
+}
+
+/** The listing's current verdict: the check (made with the national comparison) wins over the first analysis. */
+export function verdictOf(ad: StoredAd): { verdict: Verdict; score: number; verified: boolean } | null {
+  if (ad.verification) return { verdict: ad.verification.verdict, score: ad.verification.score, verified: true };
+  if (ad.analysis) return { verdict: ad.analysis.verdict, score: ad.analysis.score, verified: false };
+  return null;
 }

@@ -169,7 +169,7 @@ export function estimateAll(ads: Ad[], ai: Map<string, KnownPrices>, now = new D
       discount: Math.round(((expected - ad.price) / expected) * 100),
       expected: Math.round(expected),
       basis,
-      peers: peers.length,
+      peers: basis === 'france' ? prices!.france!.count : peers.length,
       factors,
     });
   }

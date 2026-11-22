@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { buildSearchUrl } from '../../shared/leboncoin';
+import { parseZone } from '../../shared/zone';
 import { api, type BriefDetail } from '../api';
 import { extensionReady, fetchListings } from '../extension';
 
@@ -8,6 +9,17 @@ const PAGES_PER_SEARCH = 2;
 const PAUSE_MS: [number, number] = [4_000, 8_000];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** The area as actually searched: radius per town (Leboncoin's maximum is 200 km). */
+function zoneLabel(zone: string | null): string {
+  if (!zone) return 'toute la France';
+  if (/^https?:/i.test(zone.trim())) return 'zone d’une recherche Leboncoin';
+  const places = parseZone(zone);
+  if (!places.length) return zone;
+  return places
+    .map((p) => `${p.name} ${p.radiusKm} km${/(\d{3,})\s*km/i.test(zone) && p.radiusKm === 200 ? ' (max.)' : ''}`)
+    .join(', ');
+}
 
 export function HuntPanel({
   detail,
@@ -52,6 +64,21 @@ export function HuntPanel({
   }, []);
 
   const addLog = (line: string) => setLog((l) => [...l, line]);
+
+  /** Analyses every listing still waiting, batch after batch. */
+  async function analyseAll() {
+    let first = true;
+    for (;;) {
+      if (!alive.current) return;
+      const r = await api.analyse(brief.id);
+      if (first && r.analysed === 0 && r.remaining === 0) return;
+      first = false;
+      await onChanged();
+      if (r.remaining === 0 || r.analysed === 0) break;
+      addLog(`L’IA analyse les annonces (${r.remaining} restantes)…`);
+    }
+    addLog('Analyse terminée.');
+  }
 
   async function run(label: string, fn: () => Promise<void>) {
     setBusy(label);
@@ -135,7 +162,7 @@ export function HuntPanel({
       </div>
 
       <details className="zone">
-        <summary>Où : {brief.zone ?? 'toute la France'}</summary>
+        <summary>Où : {zoneLabel(brief.zone)}</summary>
         <div className="row">
           <input
             aria-label="Villes de recherche"
@@ -226,12 +253,16 @@ export function HuntPanel({
               }
               if (!alive.current) return;
               if (complete && since && read > 0) {
-                const r = await api.prune(brief.id, since);
+                const r = await api.prune(brief.id, since, searches.map((s) => s.label));
                 if (r.removed) addLog(`${r.removed} anciennes annonces retirées (plus vues ou hors critères).`);
               } else if (!complete) {
                 addLog('Collecte incomplète : les anciennes annonces sont gardées.');
               }
               await onChanged();
+              // The flow ends on an analysed list.
+              setBusy('analyse');
+              addLog('L’IA analyse les nouvelles annonces…');
+              await analyseAll();
             })
           }
         >
@@ -243,15 +274,8 @@ export function HuntPanel({
           disabled={!!busy || pending === 0}
           onClick={() =>
             run('analyse', async () => {
-              let remaining = pending;
-              while (remaining > 0 && alive.current) {
-                addLog(`L’IA analyse les annonces (${remaining} restantes)…`);
-                const r = await api.analyse(brief.id);
-                remaining = r.remaining;
-                if (!alive.current) return;
-                await onChanged();
-              }
-              addLog('Analyse terminée.');
+              addLog(`L’IA analyse les annonces (${pending} restantes)…`);
+              await analyseAll();
             })
           }
         >
@@ -320,6 +344,12 @@ export function HuntPanel({
                   />
                   <span>
                     <strong>{s.label}</strong> <span className="muted small">— {s.why}</span>
+                    {(s.required_groups?.length ?? 0) > 0 && (
+                      <span className="small required">
+                        {' '}
+                        Doit contenir : {s.required_groups.map((g) => g.join(' / ')).join(' + ')}
+                      </span>
+                    )}
                   </span>
                 </label>
                 <a className="small" href={buildSearchUrl(s, brief.locations)} target="_blank" rel="noreferrer">

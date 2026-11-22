@@ -47,7 +47,8 @@ export const api = {
       ads,
     }),
   analyse: (id: string) => call<{ analysed: number; remaining: number }>('POST', `/briefs/${id}/analyse`),
-  prune: (id: string, since: string) => call<{ removed: number }>('POST', `/briefs/${id}/prune`, { since }),
+  prune: (id: string, since: string, labels: string[]) =>
+    call<{ removed: number }>('POST', `/briefs/${id}/prune`, { since, labels }),
   /** Without candidates, uses national listings read in the last 3 days (409 when there are none). */
   verify: (id: string, adId: string, query: Search, candidates?: Ad[]) =>
     call<Verification>('POST', `/briefs/${id}/ads/${adId}/verify`, { query, candidates }),

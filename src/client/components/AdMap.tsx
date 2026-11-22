@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { CircleMarker, MapContainer, Popup, TileLayer, Tooltip, useMap } from 'react-leaflet';
 import type { LatLngBoundsExpression } from 'leaflet';
-import type { StoredAd, Verdict } from '../../shared/types';
+import { verdictOf, type StoredAd, type Verdict } from '../../shared/types';
 import { VERDICT_LABEL } from './AdList';
 
 /** Marker colours by verdict (the map tiles are always light). */
@@ -55,7 +55,8 @@ export function AdMap({
       <FitBounds ads={located} fitKey={fitKey} />
       {located.map((ad) => {
         const active = ad.id === highlighted;
-        const color = VERDICT_COLOR[ad.analysis?.verdict ?? 'none'];
+        const v = verdictOf(ad);
+        const color = VERDICT_COLOR[v?.verdict ?? 'none'];
         return (
           <CircleMarker
             key={ad.id}
@@ -81,7 +82,7 @@ export function AdMap({
               <strong>{ad.title}</strong>
               <br />
               {ad.price != null ? `${ad.price.toLocaleString('fr-FR')} €` : 'Prix non indiqué'}
-              {ad.analysis ? ` · ${VERDICT_LABEL[ad.analysis.verdict]} ${ad.analysis.score}/100` : ''}
+              {v ? ` · ${VERDICT_LABEL[v.verdict]}${v.verified ? ' ✓' : ''} ${v.score}/100` : ''}
               <br />
               <a href={ad.url} target="_blank" rel="noreferrer">
                 Voir sur Leboncoin ↗

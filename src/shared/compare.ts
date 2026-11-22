@@ -66,6 +66,7 @@ export function comparableQuery(ad: Ad, category: number): Search {
     mileage_max: mileage ? Math.round((mileage * 1.3) / 1000) * 1000 : null,
     regdate_min: year ? year - 1 : null,
     regdate_max: year ? year + 1 : null,
+    required_groups: [],
     exclude_keywords: [],
   };
 }

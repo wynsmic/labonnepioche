@@ -7,6 +7,7 @@ import { buildSearchUrl, isExcluded, locationsFromUrl, matchesSearch } from '../
 import { parseZone, toLocationsParam } from '../shared/zone';
 import { resolvePlaces } from './geo';
 import { comparables, compare } from '../shared/compare';
+import { estimateAll } from '../shared/estimate';
 import { SearchSchema, type Ad } from '../shared/types';
 import { SESSION_COOKIE, checkPassword, createSession, requireSession } from './auth';
 import { analyseAds, preparePlan, verifyAd } from './ai';
@@ -174,8 +175,24 @@ app.post('/briefs/:id/analyse', async (c) => {
   if (batch.length) {
     const current = await db.latestPlan(c.env.DB, brief.id);
     const ids = batch.map((a) => a.id);
+    // Expected price from the other collected listings (and national comparisons), as the reference.
+    const all = await db.listAds(c.env.DB, brief.id);
+    const estimates = estimateAll(
+      all,
+      new Map(
+        all.map((a) => [
+          a.id,
+          {
+            france: a.comparison?.adjustedTo ? { median: a.comparison.median, count: a.comparison.count } : null,
+            // AI prices are left out: the analysis must not anchor on its own earlier guess.
+            market: null,
+            newPrice: null,
+          },
+        ]),
+      ),
+    );
     try {
-      const analyses = await analyseAds(c.env, brief.prompt, current?.plan ?? null, batch);
+      const analyses = await analyseAds(c.env, brief.prompt, current?.plan ?? null, batch, estimates);
       await db.saveAnalyses(c.env.DB, brief.id, ids, analyses);
       analysed = analyses.length;
     } catch (err) {
@@ -194,8 +211,14 @@ app.post('/briefs/:id/analyse', async (c) => {
  * again unchanged keep their analysis.
  */
 app.post('/briefs/:id/prune', async (c) => {
-  const { since } = z.object({ since: z.string().datetime() }).parse(await c.req.json());
-  return c.json({ removed: await db.pruneUnseen(c.env.DB, c.req.param('id'), since) });
+  const { since, labels } = z
+    .object({ since: z.string().datetime(), labels: z.array(z.string().max(200)).max(50) })
+    .parse(await c.req.json());
+  const briefId = c.req.param('id');
+  // Searches left unchecked keep their listings; listings of searches no longer in the plan go.
+  const current = await db.latestPlan(c.env.DB, briefId);
+  const keep = (current?.plan.searches.map((s) => s.label) ?? []).filter((l) => !labels.includes(l));
+  return c.json({ removed: await db.pruneUnseen(c.env.DB, briefId, since, keep) });
 });
 
 /**

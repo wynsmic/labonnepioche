@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildSearchUrl, isExcluded, locationsFromUrl, matchesSearch } from '../src/shared/leboncoin';
+import { buildSearchUrl, hasRequiredWords, isExcluded, locationsFromUrl, matchesSearch } from '../src/shared/leboncoin';
 import type { Ad } from '../src/shared/types';
 import type { Search } from '../src/shared/types';
 
@@ -14,6 +14,7 @@ const search: Search = {
   mileage_max: 120000,
   regdate_min: 2014,
   regdate_max: null,
+  required_groups: [],
   exclude_keywords: [],
 };
 
@@ -89,5 +90,19 @@ describe('matchesSearch', () => {
   });
   it('drops professional sellers', () => {
     expect(matchesSearch({ ...listing('Toyota Yaris', 9000, {}), seller: 'pro' }, yaris)).toBe(false);
+  });
+});
+
+describe('hasRequiredWords', () => {
+  const ad = (title: string, body = '', attributes: Record<string, string> = {}) =>
+    ({ id: '1', url: '', title, body, price: 1, date: null, city: null, zipcode: null, lat: null, lng: null, image: null, seller: 'private', attributes }) as const;
+  const groups = [['touring', 'ts', 'break', 'sw'], ['hybride', 'hybrid', 'hsd']];
+  it('needs one word of every group, in title, body or attributes', () => {
+    expect(hasRequiredWords({ ...ad('Corolla Touring Sports 122h', '', { fuel: 'Hybride' }) }, groups)).toBe(true);
+    expect(hasRequiredWords({ ...ad('Corolla hybride berline') }, groups)).toBe(false);
+  });
+  it('passes when the search has no required words', () => {
+    expect(hasRequiredWords({ ...ad('Corolla') }, [])).toBe(true);
+    expect(hasRequiredWords({ ...ad('Corolla') }, undefined)).toBe(true);
   });
 });

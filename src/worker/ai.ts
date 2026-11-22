@@ -9,6 +9,7 @@ import {
 } from '../shared/types';
 import { ageInDays, numberFrom, type Comparison } from '../shared/compare';
 import { adjustPrice, describeCurve } from '../shared/depreciation';
+import type { Estimate } from '../shared/estimate';
 import { llm, type Env } from './llm';
 
 const PREPARE_SYSTEM = `Tu aides un particulier à dénicher de vraies bonnes affaires sur Leboncoin (France).
@@ -18,6 +19,11 @@ retenir que ce qui est recommandable pour la demande, sans en oublier : un choix
 est souvent là où se cachent les pépites. Construis la shortlist (autant de choix que la demande en justifie, versions précises, niveau
 excellent ou très bon), puis des critères, puis des recherches Leboncoin qui ne ciblent que ces choix
 (une par choix, fourchettes de prix et de kilométrage cohérentes avec leur prix de marché).
+Mots obligatoires (required_groups) : la recherche Leboncoin reste large (marque et modèle) ; c'est ici que tu
+imposes la version de la shortlist (carrosserie, motorisation), avec les synonymes que les vendeurs écrivent
+vraiment (« sw », « break », « touring » ; « hybride », « hybrid », « hsd »…). Uniquement carrosserie et
+carburant / type de motorisation : jamais de cylindrée ni de puissance (souvent absentes des annonces, ce
+serait écarter de bonnes affaires) ; la version précise se vérifie à l'analyse.
 Mots d'exclusion : seulement ce qui dit que l'objet est hors d'usage, jamais la situation du vendeur
 (urgent, pressé, départ, déménagement : ce sont des occasions d'affaires).
 Une « affaire » = un choix de la shortlist, en bon état prouvé, sous son prix de marché, sans signe d'arnaque.
@@ -67,6 +73,10 @@ Fraîcheur (champ en_ligne_depuis_jours) : une vraie pépite part en quelques he
 - Plus de 3 jours en ligne avec un prix très bas : jamais « pepite » ; c'est un signal d'alerte
   (défaut caché, prix d'appel, arnaque ou annonce déjà vendue) à mentionner dans red_flags.
 - Plus de 14 jours : le marché l'a probablement jugée trop chère ou problématique ; dis-le.
+Prix attendu (champ prix_attendu_regles, quand il existe) : médiane d'annonces réelles du même modèle,
+ramenées à l'année, au kilométrage et à l'équipement de l'annonce. C'est ta référence de marché principale :
+pars de là, corrige seulement pour ce que les règles ne voient pas (version exacte, état, historique,
+défauts), et dis-le. Sans ce champ, estime le marché toi-même.
 Prix : donne toujours market_price (valeur de marché de CETTE annonce) et, pour un véhicule, new_price
 (prix catalogue neuf de la version à son année, options courantes), même approximatifs.
 Rends exactement une analyse par annonce reçue, avec son id.`;
@@ -96,7 +106,13 @@ function compactAd(ad: Ad) {
   };
 }
 
-export async function analyseAds(env: Env, prompt: string, plan: Plan | null, ads: Ad[]): Promise<Analysis[]> {
+export async function analyseAds(
+  env: Env,
+  prompt: string,
+  plan: Plan | null,
+  ads: Ad[],
+  estimates: Map<string, Estimate> = new Map(),
+): Promise<Analysis[]> {
   if (env.MOCK_AI === '1') return ads.map(mockAnalysis);
   const context = plan
     ? [
@@ -110,7 +126,21 @@ export async function analyseAds(env: Env, prompt: string, plan: Plan | null, ad
     // Same demand and research for every batch: cached after the first one.
     system: ANALYSE_SYSTEM,
     context,
-    user: `Annonces à juger :\n${JSON.stringify(ads.map(compactAd))}`,
+    user: `Annonces à juger :\n${JSON.stringify(
+      ads.map((ad) => {
+        const e = estimates.get(ad.id);
+        return {
+          ...compactAd(ad),
+          prix_attendu_regles: e
+            ? {
+                prix: e.expected,
+                ecart_pct: -e.discount,
+                base: e.basis === 'france' ? `${e.peers || ''} annonces comparables en France` : `${e.peers} annonces du même modèle collectées`,
+              }
+            : null,
+        };
+      }),
+    )}`,
     effort: 'medium',
   });
   const wanted = new Set(ads.map((a) => a.id));
@@ -234,6 +264,7 @@ function mockPlan(prompt: string): Plan {
         mileage_max: 120000,
         regdate_min: 2014,
         regdate_max: null,
+        required_groups: [],
         exclude_keywords: ['pour pièces', 'moteur hs'],
       },
       {
@@ -247,6 +278,7 @@ function mockPlan(prompt: string): Plan {
         mileage_max: 160000,
         regdate_min: 2010,
         regdate_max: null,
+        required_groups: [],
         exclude_keywords: ['pour pièces'],
       },
     ],

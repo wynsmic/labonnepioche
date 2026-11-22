@@ -314,11 +314,12 @@ export async function putCachedSearch(db: D1Database, key: string, ads: Ad[], at
   ]);
 }
 
-/** Drops the listings a collection started at `since` did not read again (favourites stay). */
-export async function pruneUnseen(db: D1Database, briefId: string, since: string): Promise<number> {
+/** Drops the listings a collection started at `since` did not read again (favourites and listings of `keepLabels` searches stay). */
+export async function pruneUnseen(db: D1Database, briefId: string, since: string, keepLabels: string[]): Promise<number> {
+  const keep = keepLabels.length ? ` AND (search_label IS NULL OR search_label NOT IN (${keepLabels.map(() => '?').join(', ')}))` : '';
   const r = await db
-    .prepare('DELETE FROM ads WHERE brief_id = ? AND favorite = 0 AND (last_seen IS NULL OR last_seen < ?)')
-    .bind(briefId, since)
+    .prepare(`DELETE FROM ads WHERE brief_id = ? AND favorite = 0 AND (last_seen IS NULL OR last_seen < ?)${keep}`)
+    .bind(briefId, since, ...keepLabels)
     .run();
   return r.meta.changes ?? 0;
 }

@@ -75,16 +75,27 @@ const firstNumber = (value: string | undefined) => {
   return digits ? Number(digits) : null;
 };
 
+/** Each group of the search has at least one of its words (or a word starting with it) in the listing. */
+export function hasRequiredWords(ad: Ad, groups: string[][] | undefined): boolean {
+  if (!groups?.length) return true;
+  const haystack = ` ${normalize(`${ad.title} ${ad.body} ${Object.values(ad.attributes).join(' ')}`)} `;
+  return groups.every((group) => {
+    const words = group.map(normalize).filter((w) => w.length > 0);
+    return !words.length || words.some((w) => haystack.includes(` ${w}`));
+  });
+}
+
 /**
  * Safety net on what Leboncoin returned: a private seller, and a listing that matches the planned
- * search (all its keywords in the title or make/model, price, year and mileage within range).
- * Unknown values pass.
+ * search (all its keywords in the title or make/model, the version's required words, price, year
+ * and mileage within range). Unknown values pass.
  */
 export function matchesSearch(ad: Ad, search: Search): boolean {
   if (ad.seller === 'pro') return false;
   const haystack = ` ${normalize(`${ad.title} ${ad.attributes.brand ?? ''} ${ad.attributes.model ?? ''}`)} `;
   const words = normalize(search.text).split(' ').filter((w) => w.length > 1);
   if (!words.every((w) => haystack.includes(` ${w} `) || haystack.includes(` ${w}`))) return false;
+  if (!hasRequiredWords(ad, search.required_groups)) return false;
   const within = (v: number | null, min: number | null, max: number | null) =>
     v == null || ((min == null || v >= min) && (max == null || v <= max));
   const year = firstNumber(ad.attributes.regdate);

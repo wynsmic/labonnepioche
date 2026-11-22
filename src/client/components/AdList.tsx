@@ -1,5 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { Search, StoredAd, Verdict } from '../../shared/types';
+import { verdictOf, type Search, type StoredAd, type Verdict } from '../../shared/types';
 import { Benchmarks } from './Benchmarks';
 import { MarketBlock } from './MarketBlock';
 import { ageInDays } from '../../shared/compare';
@@ -15,6 +15,9 @@ export const VERDICT_LABEL: Record<Verdict, string> = {
 };
 
 type Sort = 'score' | 'discount' | 'price' | 'recent';
+
+/** Off the shortlist according to the current verdict: hidden unless asked for. */
+export const isOffTopic = (ad: StoredAd) => verdictOf(ad)?.verdict === 'hors_sujet';
 
 /** Listings with an unknown date stay visible. */
 export function isRecent(ad: StoredAd, maxAgeDays: number | null): boolean {
@@ -72,6 +75,8 @@ export function AdList({
   categoryOf,
   maxAgeDays,
   onMaxAgeDays,
+  showOffTopic,
+  onShowOffTopic,
 }: {
   ads: StoredAd[];
   highlighted: string | null;
@@ -82,6 +87,8 @@ export function AdList({
   categoryOf: (ad: StoredAd) => number;
   maxAgeDays: number | null;
   onMaxAgeDays: (days: number | null) => void;
+  showOffTopic: boolean;
+  onShowOffTopic: (show: boolean) => void;
 }) {
   const [sort, setSort] = useState<Sort>('score');
   const [showHidden, setShowHidden] = useState(false);
@@ -108,9 +115,13 @@ export function AdList({
 
   const shown = useMemo(() => {
     const list = ads.filter(
-      (a) => (showHidden || !a.hidden) && (!onlyFavorites || a.favorite) && isRecent(a, maxAgeDays),
+      (a) =>
+        (showHidden || !a.hidden) &&
+        (!onlyFavorites || a.favorite) &&
+        (showOffTopic || !isOffTopic(a) || a.favorite) &&
+        isRecent(a, maxAgeDays),
     );
-    const byScore = (a: StoredAd) => a.analysis?.score ?? -1;
+    const byScore = (a: StoredAd) => verdictOf(a)?.score ?? -1;
     return [...list].sort((a, b) =>
       sort === 'score'
         ? byScore(b) - byScore(a)
@@ -120,8 +131,9 @@ export function AdList({
           ? (a.price ?? Infinity) - (b.price ?? Infinity)
           : (b.date ?? '').localeCompare(a.date ?? ''),
     );
-  }, [ads, sort, showHidden, onlyFavorites, maxAgeDays, estimates]);
+  }, [ads, sort, showHidden, onlyFavorites, maxAgeDays, estimates, showOffTopic]);
   const tooOld = ads.filter((a) => !a.hidden && !isRecent(a, maxAgeDays)).length;
+  const offTopic = ads.filter((a) => !a.hidden && !a.favorite && isOffTopic(a)).length;
 
   if (!ads.length) {
     return (
@@ -135,7 +147,11 @@ export function AdList({
     <section className="results" aria-label="Annonces">
       <div className="row filters small">
         <strong>{shown.length} annonces</strong>
-        {tooOld > 0 && <span className="muted">({tooOld} plus anciennes)</span>}
+        {tooOld > 0 && (
+          <button type="button" className="link small" onClick={() => onMaxAgeDays(null)}>
+            {tooOld} plus anciennes cachées · tout voir
+          </button>
+        )}
         <span className="spacer" />
         <label>
           Publiées{' '}
@@ -165,6 +181,10 @@ export function AdList({
         </label>
         <label>
           <input type="checkbox" checked={showHidden} onChange={(e) => setShowHidden(e.target.checked)} /> Masquées
+        </label>
+        <label title="Annonces hors des choix retenus (cachées par défaut)">
+          <input type="checkbox" checked={showOffTopic} onChange={(e) => onShowOffTopic(e.target.checked)} /> Hors sujet
+          {offTopic ? ` (${offTopic})` : ''}
         </label>
       </div>
       <ul className="ads">
@@ -202,8 +222,13 @@ export function AdList({
                 {ad.analysis && (
                   <Clamp>
                     <div className="verdict-row">
-                      <span className={`verdict v-${ad.analysis.verdict}`}>{VERDICT_LABEL[ad.analysis.verdict]}</span>
-                      <span className="score">{ad.analysis.score}/100</span>
+                      <span className={`verdict v-${verdictOf(ad)!.verdict}`}>
+                        {VERDICT_LABEL[verdictOf(ad)!.verdict]}
+                        {verdictOf(ad)!.verified ? ' ✓' : ''}
+                      </span>
+                      <span className="score" title={verdictOf(ad)!.verified ? 'Score après vérification' : 'Score de la première analyse'}>
+                        {verdictOf(ad)!.score}/100
+                      </span>
                       {ad.analysis.market_price != null && (
                         <span className="muted small">marché ≈ {euro.format(ad.analysis.market_price)}</span>
                       )}
