@@ -166,7 +166,8 @@ Juge à nouveau l'annonce avec ce contexte :
   sous le marché, ou plusieurs véhicules en vente (marchand non déclaré) rendent une affaire suspecte.
 - Pas assez d'annonces comparables : juge avec ton estimation du marché et dis-le dans le détail.
 Verdicts : pepite (exceptionnelle et crédible), bonne_affaire, correct, cher, suspect, hors_sujet.
-La cause tient en 3 à 6 mots ; le détail cite les chiffres utiles. Sois sceptique. Réponds en français.`;
+L'écart de prix est déjà affiché à côté de ton verdict : la cause dit ce qui l'explique au-delà du prix
+(3 à 6 mots) ; le détail cite les chiffres utiles. Sois sceptique. Réponds en français.`;
 
 function compactComparable(ad: Ad) {
   return {

@@ -1,7 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { verdictOf, type Search, type StoredAd, type Verdict } from '../../shared/types';
 import { Benchmarks } from './Benchmarks';
-import { MarketBlock } from './MarketBlock';
 import { ageInDays } from '../../shared/compare';
 import { estimateAll } from '../../shared/estimate';
 
@@ -236,9 +235,6 @@ export function AdList({
                       <span className="score" title={verdictOf(ad)!.verified ? 'Score après vérification' : 'Score de la première analyse'}>
                         {verdictOf(ad)!.score}/100
                       </span>
-                      {ad.analysis.market_price != null && (
-                        <span className="muted small">marché ≈ {euro.format(ad.analysis.market_price)}</span>
-                      )}
                     </div>
                     <p className="summary small">{ad.analysis.summary}</p>
                     <ul className="notes small">
@@ -266,7 +262,6 @@ export function AdList({
               onCheckSeller={() => onCheckSeller(ad.id)}
             />
             </div>
-            {categoryOf(ad) === 2 && <MarketBlock ad={ad} estimate={estimates.get(ad.id) ?? null} />}
             <div className="ad-actions">
               <label title="Favori">
                 <input

@@ -82,9 +82,13 @@ export const AnalysisSchema = z.object({
     .describe('Prix catalogue neuf de cette version à son année de sortie, en euros ; null si inconnu ou si ce n’est pas un véhicule'),
   summary: z
     .string()
-    .describe('UNE phrase de 20 mots maximum : version, année, km, prix et ce qui en fait (ou non) une affaire'),
-  positives: z.array(z.string()).describe('3 au plus, 8 mots maximum chacun, style télégraphique'),
-  red_flags: z.array(z.string()).describe('3 au plus, les plus graves d’abord, 10 mots maximum chacun'),
+    .describe('UNE phrase de 15 mots maximum : ton jugement (version exacte, état, ce qui fait ou défait l’affaire). Ne répète ni le prix, ni l’année, ni le km, ni l’écart au marché : ils sont affichés à côté'),
+  positives: z
+    .array(z.string())
+    .describe('3 au plus, 8 mots maximum chacun, style télégraphique ; sur la voiture et l’annonce, pas sur l’écart de prix (déjà affiché)'),
+  red_flags: z
+    .array(z.string())
+    .describe('3 au plus, les plus graves d’abord, 10 mots maximum chacun ; pas l’écart de prix lui-même (déjà affiché)'),
   questions: z.array(z.string()).describe('Questions à poser au vendeur : 3 au plus, 10 mots maximum chacune'),
 });
 export type Analysis = z.infer<typeof AnalysisSchema>;
@@ -93,7 +97,9 @@ export type Analysis = z.infer<typeof AnalysisSchema>;
 export const VerificationSchema = z.object({
   verdict: z.enum(VERDICTS),
   score: z.number().int().describe('0 à 100, comme pour l’analyse'),
-  cause: z.string().describe('La raison principale du verdict en 3 à 6 mots, chiffrée si possible (ex. « 18 % sous le marché, peu de km »)'),
+  cause: z
+    .string()
+    .describe('Ce qui explique le verdict AU-DELÀ de l’écart de prix (déjà affiché), 3 à 6 mots (ex. « annonce vide, CT non valide », « historique complet, peu de km »)'),
   detail: z
     .string()
     .describe('3 points au plus, une ligne chacun, séparés par « \n » : ce que montre la comparaison (chiffres), ce qui confirme ou contredit l’affaire, ce qu’il reste à vérifier'),

@@ -215,3 +215,7 @@ button.link { background: none; border: 0; padding: 0; min-height: 0; color: var
 .seller-attention { color: var(--v-ok); font-weight: 600; }
 .seller-suspect { color: var(--v-suspect); font-weight: 700; }
 .seller-pill { border-radius: 99px; padding: 1px 8px; font-size: 12px; font-weight: 700; border: 1px solid currentColor; }
+.target-label { display: block; font-size: 13px; font-weight: 600; }
+.warn-text { color: var(--v-suspect); }
+.bench-actions { gap: 12px; }
+.sources th { text-align: left; font-weight: 500; color: var(--muted); padding: 1px 10px 1px 0; }

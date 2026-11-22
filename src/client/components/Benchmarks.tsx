@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { buildSearchUrl } from '../../shared/leboncoin';
 import { comparableQuery, numberFrom } from '../../shared/compare';
-import type { Search, StoredAd } from '../../shared/types';
-import { VERDICT_LABEL } from './AdList';
+import { verdictOf, type Search, type StoredAd } from '../../shared/types';
 import type { Estimate } from '../../shared/estimate';
 import { describeCurve } from '../../shared/depreciation';
 
@@ -11,12 +10,6 @@ const int = new Intl.NumberFormat('fr-FR');
 
 function pct(value: number, reference: number): number {
   return Math.round(((value - reference) / reference) * 100);
-}
-
-function daysSince(date: string | null): number | null {
-  if (!date) return null;
-  const t = Date.parse(date.replace(' ', 'T'));
-  return Number.isNaN(t) ? null : Math.max(0, Math.floor((Date.now() - t) / 86_400_000));
 }
 
 /** "il y a 5 h" / "il y a 2 j" for the reuse of national listings. */
@@ -107,9 +100,23 @@ function CompareForm({
   );
 }
 
+/** Asking price against a market value, as "−12 %" (cheaper) or "+8 %". */
+function Diff({ price, value }: { price: number | null; value: number }) {
+  if (price == null || !value) return null;
+  const d = pct(price, value);
+  return <span className={d <= -10 ? 'good' : d > 0 ? 'bad' : 'muted'}>{d > 0 ? `+${d}` : d} %</span>;
+}
+
+const BASIS_LABEL: Record<Estimate['basis'], (e: Estimate) => string> = {
+  france: (e) => `médiane France · ${e.peers} annonces`,
+  annonces: (e) => `${e.peers} annonces du même modèle`,
+  ia: () => 'estimation IA',
+  neuf: () => 'depuis le prix neuf (grossier)',
+};
+
 /**
- * Check of a listing: national price comparison (same engine when possible), then the model's
- * second verdict in one word, its cause in a few words, the detail on hover.
+ * Price and check of a listing, said once: the gap to its market with its source, why the check
+ * says what it says, the seller, then the detail of every source on demand.
  */
 export function Benchmarks({
   ad,
@@ -121,7 +128,7 @@ export function Benchmarks({
   onCheckSeller,
 }: {
   ad: StoredAd;
-  /** Quick rule-based discount, shown before any check. */
+  /** Market reference of the listing (best source available). */
   estimate: Estimate | null;
   category: number;
   /** Current step while this listing is being checked. */
@@ -134,18 +141,20 @@ export function Benchmarks({
   const [editing, setEditing] = useState(false);
   const c = ad.comparison;
   const v = ad.verification;
+  const sc = ad.sellerCheck;
   const price = ad.price;
   const mileage = numberFrom(ad.attributes.mileage);
   const year = numberFrom(ad.attributes.regdate);
-  const days = daysSince(ad.date);
   const drop = ad.firstPrice != null && price != null && ad.firstPrice > price ? ad.firstPrice - price : 0;
+  const ai = ad.analysis?.market_price ?? null;
   // Comparisons saved before required_groups existed lack it.
   const query = c?.query ? { ...c.query, required_groups: c.query.required_groups ?? [] } : comparableQuery(ad, category);
+  const motor = c?.match === 'motorisation' ? ' même moteur' : '';
 
   return (
-    <aside className="bench" aria-label="Vérification">
+    <aside className="bench" aria-label="Prix et vérification">
       <div className="row bench-head">
-        <strong className="small">Vérification</strong>
+        <strong className="small">Prix</strong>
         <span className="spacer" />
         {!busy && (
           <button type="button" className="ghost small" disabled={locked} onClick={() => setEditing(!editing)} title="Régler la recherche de comparables">
@@ -154,34 +163,41 @@ export function Benchmarks({
         )}
       </div>
 
-      {estimate && (
+      {estimate ? (
         <div className="has-tip" tabIndex={0}>
-          <span className={`target ${estimate.discount >= 10 ? 'good' : estimate.discount < 0 ? 'bad' : ''}`}>
+          {/* A big discount on a suspect listing is not good news: no green then. */}
+          <div
+            className={`target ${
+              verdictOf(ad)?.verdict === 'suspect' ? 'warn-text' : estimate.discount >= 10 ? 'good' : estimate.discount < 0 ? 'bad' : ''
+            }`}
+          >
             {estimate.discount > 0 ? '−' : '+'}
             {Math.abs(estimate.discount)} %
-          </span>{' '}
-          <span className="small muted">
-            {estimate.discount > 0 ? 'sous le prix attendu' : 'au-dessus du prix attendu'}
-            {{ france: ' (France)', annonces: '', ia: ' (IA)', neuf: ' (depuis le neuf, grossier)' }[estimate.basis]}
-          </span>
+            <span className="target-label"> {estimate.discount > 0 ? 'sous le marché' : 'au-dessus du marché'}</span>
+          </div>
+          <div className="small muted">
+            {BASIS_LABEL[estimate.basis](estimate)}
+            {estimate.basis === 'france' ? motor : ''}
+            {estimate.basis === 'france' && v?.searchedAt ? ` · lues ${readAgo(v.searchedAt)}` : ''}
+          </div>
           <span className="tip small" role="tooltip">
             {estimate.factors.map((f) => (
               <span key={f} className="tip-line">
                 {f}
               </span>
             ))}
-            <span className="tip-line muted-tip">Estimation rapide par règles moyennes (année, km, équipement)</span>
           </span>
         </div>
+      ) : (
+        <div className="small muted">Marché inconnu : lance l’analyse ou « Vérifier »</div>
       )}
 
       {busy ? (
         <div className="small muted">{busy}</div>
-      ) : v ? (
-        <>
-          <div className={`check-verdict v-text-${v.verdict}`}>{VERDICT_LABEL[v.verdict]}</div>
+      ) : (
+        v && (
           <div className="check-cause has-tip small" tabIndex={0}>
-            {v.cause}
+            Pourquoi : {v.cause}
             <span className="tip" role="tooltip">
               {v.detail.split('\n').filter(Boolean).map((line) => (
                 <span key={line} className="tip-line">
@@ -190,22 +206,30 @@ export function Benchmarks({
               ))}
             </span>
           </div>
-          <div className="small muted">
-            {v.comparables
-              ? `${v.comparables} annonces comparées · ${v.match === 'motorisation' ? 'même motorisation' : 'même modèle'}`
-              : 'Pas assez d’annonces comparables'}
-            {v.searchedAt && v.searchedAt !== v.at ? ` · lues ${readAgo(v.searchedAt)}` : ''}
-          </div>
-        </>
-      ) : (
-        !editing && (
-          <button type="button" className="primary small" disabled={locked || price == null} onClick={() => onCheck(query)}>
-            Vérifier
-          </button>
         )
       )}
 
-      {editing && !busy && (
+      {sc ? (
+        <div className={`small has-tip seller seller-${sc.level}`} tabIndex={0}>
+          {sc.level === 'ok' ? '✓' : '⚠'} Vendeur {sc.memberSince ? `depuis ${sc.memberSince}` : ''}
+          {sc.totalAds != null ? ` · ${sc.totalAds} annonce${sc.totalAds > 1 ? 's' : ''}` : ''}{' '}
+          <a href={sc.profileUrl} target="_blank" rel="noreferrer">
+            profil ↗
+          </a>
+          <span className="tip" role="tooltip">
+            {(sc.flags.length ? sc.flags : ['Rien d’anormal : compte ancien, pas de revente apparente']).map((f) => (
+              <span key={f} className="tip-line">
+                • {f}
+              </span>
+            ))}
+            {sc.badges.length > 0 && <span className="tip-line">• {sc.badges.join(', ')}</span>}
+          </span>
+        </div>
+      ) : null}
+
+      {drop > 0 && <div className="small good">Baisse de {euro.format(drop)} depuis la 1re lecture</div>}
+
+      {editing && !busy ? (
         <CompareForm
           initial={query}
           busy={false}
@@ -215,103 +239,105 @@ export function Benchmarks({
           }}
           onCancel={() => setEditing(false)}
         />
-      )}
-
-      {c && price != null && !busy && (
-        <details className="small check-market">
-          <summary>
-            <span className={price < c.median ? 'good' : 'bad'}>
-              {pct(price, c.median) > 0 ? '+' : ''}
-              {pct(price, c.median)} %
-            </span>{' '}
-            vs médiane France
-          </summary>
-          <div>
-            Moins cher que <strong>{c.cheaperThan} %</strong> des {c.count} annonces
-            {c.engine ? ` (${c.engine})` : ''}
-          </div>
-          {c.adjustedTo && c.curve && (
-            <div className="has-tip muted" tabIndex={0}>
-              Prix ramenés à{' '}
-              {[c.adjustedTo.year, c.adjustedTo.km != null ? `${int.format(c.adjustedTo.km)} km` : null]
-                .filter(Boolean)
-                .join(' et ')}{' '}
-              ⓘ
-              <span className="tip" role="tooltip">
-                Chaque annonce comparée est corrigée de son écart d’année et de kilométrage avec celle-ci. Loi de décote :{' '}
-                {describeCurve(c.curve)}.
-              </span>
-            </div>
-          )}
-          <Strip prices={c.prices} price={price} median={c.median} />
-          <div className="muted">
-            Médiane {euro.format(c.median)} · habituel {euro.format(c.p25)}–{euro.format(c.p75)}
-          </div>
-          {mileage != null && c.medianMileage != null && (
-            <div className={mileage <= c.medianMileage ? 'good' : 'bad'}>
-              {int.format(mileage)} km vs {int.format(c.medianMileage)} km médian
-            </div>
-          )}
-          {year != null && c.medianYear != null && year !== c.medianYear && (
-            <div className={year > c.medianYear ? 'good' : 'bad'}>
-              {year} vs {c.medianYear} médian
-            </div>
-          )}
-          <ul className="cheapest">
-            {c.cheapest.map((x) => (
-              <li key={x.url}>
-                <a href={x.url} target="_blank" rel="noreferrer">
-                  {euro.format(x.price)}
-                </a>
-                {x.adjusted != null && x.adjusted !== x.price && <span className="muted"> (≈ {euro.format(x.adjusted)} ajusté)</span>}{' '}
-                · {x.year ?? '?'} · {x.mileage != null ? `${int.format(x.mileage)} km` : '?'} · {x.city ?? ''}
-              </li>
-            ))}
-          </ul>
-          <a href={buildSearchUrl(c.query, null)} target="_blank" rel="noreferrer">
-            Recherche nationale ↗
-          </a>
-        </details>
-      )}
-
-      {v && !busy && (
-        <button type="button" className="ghost small" disabled={locked} onClick={() => onCheck(query)}>
-          Revérifier
-        </button>
-      )}
-
-      {ad.sellerCheck ? (
-        <div className={`small has-tip seller seller-${ad.sellerCheck.level}`} tabIndex={0}>
-          {ad.sellerCheck.level === 'ok' ? '✓' : '⚠'} Vendeur{' '}
-          {ad.sellerCheck.memberSince ? `depuis ${ad.sellerCheck.memberSince}` : ''}
-          {ad.sellerCheck.totalAds != null ? ` · ${ad.sellerCheck.totalAds} annonce${ad.sellerCheck.totalAds > 1 ? 's' : ''}` : ''}{' '}
-          <a href={ad.sellerCheck.profileUrl} target="_blank" rel="noreferrer">
-            profil ↗
-          </a>
-          <span className="tip" role="tooltip">
-            {(ad.sellerCheck.flags.length ? ad.sellerCheck.flags : ['Rien d’anormal : compte ancien, pas de revente apparente']).map((f) => (
-              <span key={f} className="tip-line">
-                • {f}
-              </span>
-            ))}
-            {ad.sellerCheck.badges.length > 0 && <span className="tip-line">• {ad.sellerCheck.badges.join(', ')}</span>}
-            <span className="tip-line muted-tip">Lu le {new Date(ad.sellerCheck.at).toLocaleDateString('fr-FR')}</span>
-          </span>
-        </div>
       ) : (
-        ad.sellerId &&
         !busy && (
-          <button type="button" className="link small" disabled={locked} onClick={onCheckSeller}>
-            Vérifier le vendeur
-          </button>
+          <div className="row small bench-actions">
+            {v ? (
+              <button type="button" className="link small" disabled={locked} onClick={() => onCheck(query)}>
+                Revérifier
+              </button>
+            ) : (
+              <button type="button" className="primary small" disabled={locked || price == null} onClick={() => onCheck(query)}>
+                Vérifier
+              </button>
+            )}
+            {!sc && ad.sellerId && (
+              <button type="button" className="link small" disabled={locked} onClick={onCheckSeller}>
+                Vendeur
+              </button>
+            )}
+          </div>
         )
       )}
 
-      {drop > 0 && <div className="small good">Baisse de {euro.format(drop)} depuis la 1re lecture</div>}
-      {days != null && (
-        <div className="small muted">
-          En ligne depuis {days} j{days >= 30 ? ' : vendeur peut-être ouvert à la négociation' : ''}
-        </div>
+      {price != null && (c || ai != null || (estimate && estimate.basis !== 'france')) && !busy && (
+        <details className="small check-market">
+          <summary>Détail du prix</summary>
+          <table className="sources">
+            <tbody>
+              {c && (
+                <tr>
+                  <th>France</th>
+                  <td>
+                    {euro.format(c.median)} <Diff price={price} value={c.median} />{' '}
+                    <span className="muted">
+                      ({c.count}
+                      {motor})
+                    </span>
+                  </td>
+                </tr>
+              )}
+              {estimate && (estimate.basis === 'annonces' || estimate.basis === 'neuf') && (
+                <tr>
+                  <th>Règles</th>
+                  <td>
+                    {euro.format(Math.round(estimate.expected / 50) * 50)} <Diff price={price} value={estimate.expected} />
+                  </td>
+                </tr>
+              )}
+              {ai != null && (
+                <tr>
+                  <th>IA</th>
+                  <td>
+                    {euro.format(ai)} <Diff price={price} value={ai} />
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+          {c && (
+            <>
+              {c.adjustedTo && c.curve && (
+                <div className="has-tip muted" tabIndex={0}>
+                  Prix ramenés à{' '}
+                  {[c.adjustedTo.year, c.adjustedTo.km != null ? `${int.format(c.adjustedTo.km)} km` : null].filter(Boolean).join(' et ')} ⓘ
+                  <span className="tip" role="tooltip">
+                    Chaque annonce comparée est corrigée de son écart d’année et de kilométrage avec celle-ci. Loi de décote :{' '}
+                    {describeCurve(c.curve)}.
+                  </span>
+                </div>
+              )}
+              <Strip prices={c.prices} price={price} median={c.median} />
+              <div className="muted">
+                Habituel {euro.format(c.p25)}–{euro.format(c.p75)} · moins cher que {c.cheaperThan} %
+              </div>
+              {mileage != null && c.medianMileage != null && (
+                <div className={mileage <= c.medianMileage ? 'good' : 'bad'}>
+                  {int.format(mileage)} km vs {int.format(c.medianMileage)} km médian
+                </div>
+              )}
+              {year != null && c.medianYear != null && year !== c.medianYear && (
+                <div className={year > c.medianYear ? 'good' : 'bad'}>
+                  {year} vs {c.medianYear} médian
+                </div>
+              )}
+              <ul className="cheapest">
+                {c.cheapest.map((x) => (
+                  <li key={x.url}>
+                    <a href={x.url} target="_blank" rel="noreferrer">
+                      {euro.format(x.price)}
+                    </a>
+                    {x.adjusted != null && x.adjusted !== x.price && <span className="muted"> (≈ {euro.format(x.adjusted)} ajusté)</span>} ·{' '}
+                    {x.year ?? '?'} · {x.mileage != null ? `${int.format(x.mileage)} km` : '?'} · {x.city ?? ''}
+                  </li>
+                ))}
+              </ul>
+              <a href={buildSearchUrl(c.query, null)} target="_blank" rel="noreferrer">
+                Recherche nationale ↗
+              </a>
+            </>
+          )}
+        </details>
       )}
     </aside>
   );
