@@ -134,6 +134,11 @@ export function AdList({
             <a className="ad-link" href={ad.url} target="_blank" rel="noreferrer">
               <div className="thumb">
                 {ad.image ? <img src={ad.image} alt="" loading="lazy" referrerPolicy="no-referrer" /> : null}
+                {ad.seller === 'pro' && (
+                  <span className="pro-badge" title="Annonce d’un professionnel">
+                    PRO
+                  </span>
+                )}
               </div>
               <div className="ad-body">
                 <div className="ad-title">{ad.title}</div>
