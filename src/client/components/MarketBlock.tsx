@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { Estimate } from '../../shared/estimate';
-import { ARGUS_URL, laCentraleUrl } from '../../shared/market';
+import { laCentraleUrl } from '../../shared/market';
 import type { StoredAd } from '../../shared/types';
 import { api } from '../api';
 import { capturePage, extensionReady } from '../extension';
@@ -110,15 +110,6 @@ export function MarketBlock({ ad, estimate }: { ad: StoredAd; estimate: Estimate
               ) : (
                 <span className="muted">marque, modèle ou année inconnus</span>
               )}
-            </td>
-          </tr>
-          <tr>
-            <th>L’Argus</th>
-            <td>
-              <a href={ARGUS_URL} target="_blank" rel="noreferrer">
-                Calculer la cote ↗
-              </a>{' '}
-              <span className="muted">(version, année, km à saisir)</span>
             </td>
           </tr>
         </tbody>

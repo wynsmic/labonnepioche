@@ -17,5 +17,3 @@ export function laCentraleUrl(ad: Ad): string | null {
   if (!make || !model || !(year > 1950)) return null;
   return `https://www.lacentrale.fr/cote-voitures-${slug(make)}-${slug(model)}--${year}-.html`;
 }
-
-export const ARGUS_URL = 'https://www.largus.fr/cote/';
