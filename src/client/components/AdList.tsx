@@ -3,6 +3,7 @@ import { verdictOf, type Search, type StoredAd, type Verdict } from '../../share
 import { Benchmarks } from './Benchmarks';
 import { ageInDays } from '../../shared/compare';
 import { estimateAll } from '../../shared/estimate';
+import { sellerMessage } from '../../shared/message';
 
 export const VERDICT_LABEL: Record<Verdict, string> = {
   pepite: 'Pépite',
@@ -40,6 +41,29 @@ function facts(ad: StoredAd): string {
   return [a.regdate, a.mileage ? `${a.mileage}`.replace(/km$/i, '').trim() + ' km' : null, a.fuel, a.gearbox]
     .filter(Boolean)
     .join(' · ');
+}
+
+/** Copies a first message to the seller, adapted to the listing. */
+function CopyMessage({ ad }: { ad: StoredAd }) {
+  const [state, setState] = useState<'idle' | 'done' | 'error'>('idle');
+  return (
+    <button
+      type="button"
+      className="ghost small"
+      title="Copie un premier message au vendeur, adapté à cette annonce"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(sellerMessage(ad));
+          setState('done');
+        } catch {
+          setState('error');
+        }
+        setTimeout(() => setState('idle'), 2_000);
+      }}
+    >
+      {state === 'done' ? 'Message copié ✓' : state === 'error' ? 'Copie impossible' : '✉ Copier un message'}
+    </button>
+  );
 }
 
 /** Shows the first lines only; hovering (or focusing) shows the rest over what follows. */
@@ -263,6 +287,7 @@ export function AdList({
             />
             </div>
             <div className="ad-actions">
+              <CopyMessage ad={ad} />
               <label title="Favori">
                 <input
                   type="checkbox"

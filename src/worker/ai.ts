@@ -69,7 +69,9 @@ Pour chaque annonce : note son intérêt de 0 à 100 au regard de la demande et 
 choisis un verdict (pepite = affaire exceptionnelle et crédible, bonne_affaire, correct, cher,
 suspect = prix ou texte qui font craindre une arnaque ou un vice caché, hors_sujet),
 distille l'annonce en une phrase courte, puis les points forts, les signaux d'alerte et les questions à
-poser au vendeur en listes télégraphiques (3 éléments au plus chacune, quelques mots, pas de phrases).
+poser au vendeur en listes courtes (3 éléments au plus chacune). Points forts et alertes en style
+télégraphique ; questions polies, comme écrites au vendeur, et propres à l'annonce (les questions
+habituelles sur les frais, le CT, l'import, les accidents et l'entretien sont déjà posées).
 Sois concret et sceptique. Réponds en français.
 Fraîcheur (champ en_ligne_depuis_jours) : une vraie pépite part en quelques heures ou quelques jours.
 - Plus de 3 jours en ligne avec un prix très bas : jamais « pepite » ; c'est un signal d'alerte

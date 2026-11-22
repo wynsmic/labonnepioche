@@ -89,7 +89,9 @@ export const AnalysisSchema = z.object({
   red_flags: z
     .array(z.string())
     .describe('3 au plus, les plus graves d’abord, 10 mots maximum chacun ; pas l’écart de prix lui-même (déjà affiché)'),
-  questions: z.array(z.string()).describe('Questions à poser au vendeur : 3 au plus, 10 mots maximum chacune'),
+  questions: z
+    .array(z.string())
+    .describe('Questions propres à CETTE annonce, à poser au vendeur : 3 au plus, courtes et polies, écrites comme on les lui enverrait (ex. « Pourriez-vous m’envoyer le numéro VIN ? »). Pas les questions habituelles (frais, CT, import, accident, entretien), déjà posées'),
 });
 export type Analysis = z.infer<typeof AnalysisSchema>;
 
