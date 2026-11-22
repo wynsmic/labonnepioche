@@ -1,9 +1,12 @@
 // Messages from the Affaires web app (externally_connectable):
 //   { type: 'ping' }            -> { ok: true, version }
 //   { type: 'fetch', url }      -> { ok: true, ads } | { ok: false, reason }
+//   { type: 'capture', url }    -> { ok: true, url, title, nextData, jsonLd, text } | { ok: false, reason }
+//                                  (La Centrale valuation pages only)
 // Each fetch opens the Leboncoin page in a background tab of THIS browser, reads the
 // listings it displays, then closes the tab. The app paces the requests.
 import { extractAdsFromPage } from './extract.js';
+import { capturePage } from './capture.js';
 
 const LOAD_TIMEOUT_MS = 30_000;
 const CAPTCHA_TIMEOUT_MS = 120_000;
@@ -19,6 +22,12 @@ chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) =>
       .catch((err) => sendResponse({ ok: false, reason: String(err?.message ?? err) }));
     return true; // async response
   }
+  if (message?.type === 'capture' && typeof message.url === 'string') {
+    capture(message.url)
+      .then(sendResponse)
+      .catch((err) => sendResponse({ ok: false, reason: String(err?.message ?? err) }));
+    return true;
+  }
   sendResponse({ ok: false, reason: 'unknown-message' });
   return false;
 });
@@ -30,10 +39,24 @@ async function fetchListings(url) {
     return { ok: false, reason: 'not-a-search' };
   }
 
+  return readInTab(url, extractAdsFromPage);
+}
+
+async function capture(url) {
+  const parsed = new URL(url);
+  // Only La Centrale valuation pages.
+  if (parsed.hostname !== 'www.lacentrale.fr' || !parsed.pathname.startsWith('/cote')) {
+    return { ok: false, reason: 'not-a-valuation-page' };
+  }
+  return readInTab(url, capturePage);
+}
+
+/** Opens the page in a background tab, runs `func` in it (bringing the tab forward for a captcha), closes it. */
+async function readInTab(url, func) {
   const tab = await chrome.tabs.create({ url, active: false });
   try {
     await waitForLoad(tab.id, LOAD_TIMEOUT_MS);
-    let result = await extract(tab.id);
+    let result = await run(tab.id, func);
     if (!result.ok && result.reason === 'captcha') {
       // Let the user solve the check in the tab, then read the page again.
       await chrome.tabs.update(tab.id, { active: true });
@@ -42,7 +65,7 @@ async function fetchListings(url) {
         await sleep(3_000);
         // The page reloads after the check: reading it mid-navigation can throw.
         try {
-          result = await extract(tab.id);
+          result = await run(tab.id, func);
         } catch {
           result = { ok: false, reason: 'captcha' };
         }
@@ -54,8 +77,8 @@ async function fetchListings(url) {
   }
 }
 
-async function extract(tabId) {
-  const [injection] = await chrome.scripting.executeScript({ target: { tabId }, func: extractAdsFromPage });
+async function run(tabId, func) {
+  const [injection] = await chrome.scripting.executeScript({ target: { tabId }, func });
   return injection?.result ?? { ok: false, reason: 'no-result' };
 }
 

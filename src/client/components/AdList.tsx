@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { Search, StoredAd, Verdict } from '../../shared/types';
 import { Benchmarks } from './Benchmarks';
+import { MarketBlock } from './MarketBlock';
 import { ageInDays } from '../../shared/compare';
 import { estimateAll } from '../../shared/estimate';
 
@@ -191,6 +192,7 @@ export function AdList({
               onCheck={(query) => onCheck(ad.id, query)}
             />
             </div>
+            {categoryOf(ad) === 2 && <MarketBlock ad={ad} estimate={estimates.get(ad.id) ?? null} />}
             <div className="ad-actions">
               <label title="Favori">
                 <input

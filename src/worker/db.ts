@@ -302,3 +302,10 @@ export async function saveVerification(
     .bind(comparison ? JSON.stringify(comparison) : null, JSON.stringify(verification), briefId, adId)
     .run();
 }
+
+export async function saveCapture(db: D1Database, source: string, url: string, adId: string | null, payload: string): Promise<void> {
+  await db
+    .prepare('INSERT INTO captures (source, url, ad_id, payload) VALUES (?, ?, ?, ?)')
+    .bind(source, url, adId, payload)
+    .run();
+}

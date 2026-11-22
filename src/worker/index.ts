@@ -240,6 +240,15 @@ app.post('/briefs/:id/ads/:adId/verify', async (c) => {
   return c.json(verification);
 });
 
+/** Raw valuation page read by the extension, stored to build its parser. */
+app.post('/captures', async (c) => {
+  const input = z
+    .object({ source: z.enum(['lacentrale']), url: z.string().url(), adId: z.string().nullable(), payload: z.string().max(900_000) })
+    .parse(await c.req.json());
+  await db.saveCapture(c.env.DB, input.source, input.url, input.adId, input.payload);
+  return c.json({ ok: true });
+});
+
 app.patch('/briefs/:id/ads/:adId', async (c) => {
   const flags = z.object({ favorite: z.boolean().optional(), hidden: z.boolean().optional() }).parse(await c.req.json());
   await db.setAdFlags(c.env.DB, c.req.param('id'), c.req.param('adId'), flags);

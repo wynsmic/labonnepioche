@@ -31,3 +31,12 @@ export async function extensionReady(): Promise<boolean> {
 export function fetchListings(url: string): Promise<FetchResult> {
   return send<FetchResult>({ type: 'fetch', url });
 }
+
+export type CaptureResult =
+  | { ok: true; url: string; title: string; nextData: string | null; jsonLd: string[]; text: string }
+  | { ok: false; reason: string };
+
+/** Opens a La Centrale valuation page in a background tab of this browser and returns its content. */
+export function capturePage(url: string): Promise<CaptureResult> {
+  return send<CaptureResult>({ type: 'capture', url });
+}

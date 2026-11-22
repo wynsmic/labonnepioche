@@ -179,3 +179,9 @@ label { font-weight: 500; }
 .target { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .check-market summary { cursor: pointer; }
 .check-market > div, .check-market > ul, .check-market > a { margin-top: 4px; }
+
+.market { border-top: 1px solid var(--line); padding: 8px 12px; display: grid; gap: 4px; }
+.market table { border-collapse: collapse; width: 100%; }
+.market th { text-align: left; font-weight: 500; color: var(--muted); padding: 2px 12px 2px 0; white-space: nowrap; width: 1%; vertical-align: top; }
+.market td { padding: 2px 0; font-variant-numeric: tabular-nums; }
+.market td button { padding: 0 8px; min-height: 0; line-height: 1.6; }
