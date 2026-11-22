@@ -335,7 +335,7 @@ export function HuntPanel({
 
       {/* 3. The plan: the shortlist first, it decides everything else */}
       {plan && (plan.plan.shortlist?.length ?? 0) > 0 && (
-        <details className="shortlist" open>
+        <details className="shortlist">
           <summary>
             <strong>Choix retenus ({plan.plan.shortlist.length})</strong>
           </summary>
