@@ -1,9 +1,14 @@
 import type { Ad } from '../shared/types';
 
-/** How long what was learnt about a listing or a seller is reused. */
-export const AD_CACHE_DAYS = 15;
+/** Archive of the listings: their texts, facts and verdicts are kept and reused for a month. */
+export const ARCHIVE_DAYS = 30;
+/** Market freshness: a model's national search (and its price curve) is read again after this. */
+export const MARKET_DAYS = 15;
+/** A seller's profile check is read again after this (accounts change faster than cars). */
+export const SELLER_DAYS = 15;
 
-const cutoff = () => new Date(Date.now() - AD_CACHE_DAYS * 86_400_000).toISOString();
+const daysAgo = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
+const cutoff = () => daysAgo(ARCHIVE_DAYS);
 
 /** FNV-1a, enough to tell that a text changed. */
 function hash(text: string): string {
@@ -65,20 +70,20 @@ export async function rememberSeller(db: D1Database, sellerId: string, result: u
     db
       .prepare('INSERT OR REPLACE INTO seller_cache (seller_id, result, created_at) VALUES (?, ?, ?)')
       .bind(sellerId, JSON.stringify(result), new Date().toISOString()),
-    db.prepare('DELETE FROM seller_cache WHERE created_at < ?').bind(cutoff()),
+    db.prepare('DELETE FROM seller_cache WHERE created_at < ?').bind(daysAgo(SELLER_DAYS)),
   ]);
 }
 
 export async function cachedSeller<T>(db: D1Database, sellerId: string): Promise<T | null> {
   const row = await db
     .prepare('SELECT result FROM seller_cache WHERE seller_id = ? AND created_at > ?')
-    .bind(sellerId, cutoff())
+    .bind(sellerId, daysAgo(SELLER_DAYS))
     .first<{ result: string }>();
   return row ? (JSON.parse(row.result) as T) : null;
 }
 
 /**
- * Gives the hunt's listings back what was learnt less than AD_CACHE_DAYS ago: analysis and check
+ * Gives the hunt's listings back what was learnt less than ARCHIVE_DAYS ago: analysis and check
  * (same listing, same demand), national comparison (same listing), seller id and seller check.
  * Returns how many listings got something back.
  */

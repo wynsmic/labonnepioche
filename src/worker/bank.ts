@@ -1,10 +1,10 @@
 import { firstNumber, isMetropolitan } from '../shared/leboncoin';
 import type { Ad, Search } from '../shared/types';
-import { AD_CACHE_DAYS } from './cache';
+import { ARCHIVE_DAYS } from './cache';
 
 /**
  * The bank of every listing read on Leboncoin (collections and national comparisons), shared by
- * all hunts: a listing of a hunt's list can be a comparable of another one. Kept AD_CACHE_DAYS.
+ * all hunts: a listing of a hunt's list can be a comparable of another one. Kept ARCHIVE_DAYS.
  */
 
 const lower = (v: string | undefined) => (v ? v.trim().toLowerCase() : null);
@@ -19,13 +19,13 @@ export async function bankAds(db: D1Database, ads: Ad[], seenAt: string): Promis
   );
   const unique = [...new Map(ads.map((a) => [a.id, a])).values()];
   const stmts = unique.map((ad) => statement.bind(ad.id, JSON.stringify(ad), brandOf(ad), modelOf(ad), seenAt, seenAt));
-  // Housekeeping: listings not seen for twice the reuse period are of no use any more.
-  stmts.push(db.prepare('DELETE FROM ad_bank WHERE seen_at < ?').bind(new Date(Date.now() - 2 * AD_CACHE_DAYS * 86_400_000).toISOString()));
+  // Housekeeping: listings not seen for longer than the archive period are dropped.
+  stmts.push(db.prepare('DELETE FROM ad_bank WHERE seen_at < ?').bind(new Date(Date.now() - (ARCHIVE_DAYS + 1) * 86_400_000).toISOString()));
   for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
 }
 
 /**
- * Listings of the bank read less than AD_CACHE_DAYS ago that fit the comparison search: same make
+ * Listings of the bank read less than ARCHIVE_DAYS ago that fit the comparison search: same make
  * and model, within its year, mileage and price ranges, in mainland France.
  * Returns them with when the oldest of them was read.
  */
@@ -33,7 +33,7 @@ export async function bankCandidates(db: D1Database, ad: Ad, query: Search): Pro
   const brand = brandOf(ad);
   const model = modelOf(ad);
   if (!brand || !model) return { ads: [], oldest: null };
-  const since = new Date(Date.now() - AD_CACHE_DAYS * 86_400_000).toISOString();
+  const since = new Date(Date.now() - ARCHIVE_DAYS * 86_400_000).toISOString();
   const { results } = await db
     .prepare('SELECT data, seen_at FROM ad_bank WHERE brand = ? AND model = ? AND seen_at > ? AND id != ?')
     .bind(brand, model, since, ad.id)
@@ -56,9 +56,9 @@ export async function bankCandidates(db: D1Database, ad: Ad, query: Search): Pro
   };
 }
 
-const freshSince = () => new Date(Date.now() - AD_CACHE_DAYS * 86_400_000).toISOString();
+const freshSince = () => new Date(Date.now() - ARCHIVE_DAYS * 86_400_000).toISOString();
 
-/** Of these listings, those whose page was not read in the last AD_CACHE_DAYS (text unknown). */
+/** Of these listings, those whose page was not read in the last ARCHIVE_DAYS (text unknown). */
 export async function withoutDetail(db: D1Database, ids: string[]): Promise<Set<string>> {
   const missing = new Set(ids);
   const since = freshSince();
@@ -73,7 +73,7 @@ export async function withoutDetail(db: D1Database, ids: string[]): Promise<Set<
   return missing;
 }
 
-/** The seller's texts already read (last AD_CACHE_DAYS), to keep them when search results bring the listing back without it. */
+/** The seller's texts already read (last ARCHIVE_DAYS), to keep them when search results bring the listing back without it. */
 export async function knownTexts(db: D1Database, ids: string[]): Promise<Map<string, { body: string; sellerId: string | null }>> {
   const out = new Map<string, { body: string; sellerId: string | null }>();
   const since = freshSince();
@@ -140,7 +140,7 @@ export async function factsOf(db: D1Database, ids: string[]): Promise<Map<string
   return out;
 }
 
-/** Every bank listing of a make and model read in the last AD_CACHE_DAYS (any hunt, any search). */
+/** Every bank listing of a make and model read in the last ARCHIVE_DAYS (any hunt, any search). */
 export async function bankModel(db: D1Database, brand: string, model: string): Promise<Ad[]> {
   const { results } = await db
     .prepare('SELECT data FROM ad_bank WHERE brand = ? AND model = ? AND seen_at > ?')

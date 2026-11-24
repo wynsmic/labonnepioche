@@ -367,7 +367,7 @@ export function HuntPanel({
                 addLog('Collecte incomplète : les anciennes annonces sont gardées.');
               }
               await onChanged();
-              // Search results carry no description: read each new listing's page (once, 15 days).
+              // Search results carry no description: read each new listing's page (once, 30 days).
               setBusy('details');
               const details = await readDetails(brief.id, addLog, () => alive.current);
               if (details) addLog(`${details} textes d’annonces lus.`);

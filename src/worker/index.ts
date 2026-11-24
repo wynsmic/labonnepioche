@@ -16,7 +16,7 @@ import { AiError, llm, modelLabel } from './llm';
 import * as db from './db';
 import { cachedSeller, promptKey, remember, rememberSeller, restore } from './cache';
 import { bankAds, bankCandidates, bankDetails, bankModel, factsOf, knownTexts, saveFacts, withoutDetail, withoutFacts } from './bank';
-import { AD_CACHE_DAYS } from './cache';
+import { MARKET_DAYS } from './cache';
 import { curveKey, estimateAll, estimateOf, priceInputs, aiCurveOf } from '../shared/estimate';
 import { comparableQuery } from '../shared/compare';
 import type { SellerCheck } from '../shared/seller';
@@ -143,7 +143,7 @@ app.post('/briefs/:id/plan', async (c) => {
     console.error('price points', err);
   }
   await db.savePlan(c.env.DB, brief.id, brief.prompt, plan);
-  // A new plan makes the verdicts stale, unless the demand is the same: the cache (15 days) gives back
+  // A new plan makes the verdicts stale, unless the demand is the same: the archive (30 days) gives back
   // the analyses made for this very demand.
   await db.resetAnalyses(c.env.DB, brief.id);
   await restore(c.env.DB, brief.id, brief.prompt);
@@ -162,7 +162,7 @@ async function modelCurves(database: D1Database, ads: StoredAd[], plan: Plan | n
     const key = curveKey(ad);
     if (key && !keys.has(key)) keys.set(key, ad);
   }
-  const curves = await db.curvesFor(database, [...keys.keys()], AD_CACHE_DAYS);
+  const curves = await db.curvesFor(database, [...keys.keys()], MARKET_DAYS);
   for (const [key, sample] of keys) {
     if (curves[key]) continue;
     const brand = sample.attributes.brand ?? sample.attributes.u_car_brand;
@@ -269,12 +269,12 @@ app.post('/briefs/:id/ads', async (c) => {
   const counts = await db.upsertAds(c.env.DB, brief.id, input.searchLabel, kept, seenAt);
   // Everything read goes to the shared bank, even off-target listings: they are comparables for others.
   await bankAds(c.env.DB, input.ads, seenAt);
-  // Listings already judged in the last 15 days get their analysis, check and seller back for free.
+  // Listings already judged in the last 30 days get their analysis, check and seller back for free.
   const restored = await restore(c.env.DB, brief.id, brief.prompt);
   return c.json({ ...counts, restored, seenAt, offTarget: input.ads.length - onTarget.length, excluded: onTarget.length - kept.length });
 });
 
-/** Listings of the hunt whose page must be read (text unknown or older than 15 days), for the extension. */
+/** Listings of the hunt whose page must be read (text unknown or older than 30 days), for the extension. */
 app.get('/briefs/:id/details-needed', async (c) => {
   const brief = await db.getBrief(c.env.DB, c.req.param('id'));
   if (!brief) return c.json({ error: 'Recherche introuvable' }, 404);
@@ -397,7 +397,7 @@ app.post('/briefs/:id/ads/:adId/verify', async (c) => {
     await db.markSearchRead(c.env.DB, url, at);
   } else {
     const readAt = await db.searchReadAt(c.env.DB, url);
-    if (!readAt || Date.parse(readAt) < Date.now() - AD_CACHE_DAYS * 86_400_000) {
+    if (!readAt || Date.parse(readAt) < Date.now() - MARKET_DAYS * 86_400_000) {
       return c.json({
         needCandidates: true as const,
         urls: Array.from({ length: NATIONAL_PAGES }, (_, i) => buildSearchUrl(query, null, i + 1)),

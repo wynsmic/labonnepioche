@@ -39,7 +39,7 @@ Pour utiliser Claude à la place, mets `LLM_PROVIDER=claude` et `ANTHROPIC_API_K
    leurs versions, leurs années et des repères de prix, puis écrit les recherches Leboncoin. Tu peux ajouter
    ou retirer un modèle.
 2. **Récupérer** : l'extension ouvre ces recherches dans *ton* Chrome, à rythme humain. Elle lit ensuite le
-   texte de chaque annonce, une seule fois : les annonces restent en banque pendant 15 jours.
+   texte de chaque annonce, une seule fois : les annonces restent archivées un mois.
 3. **Analyser** : un petit modèle extrait les faits de chaque annonce (accident, propriétaires, réparations…).
    L'IA attribue ensuite un verdict et une note. « Analyser le prix » ajuste la courbe du modèle sur les
    annonces de toute la France.

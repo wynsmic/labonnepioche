@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 /**
  * What the seller's text says that moves the price, read once per listing by a small model and
- * kept in the listing bank (shared by every hunt) for 15 days.
+ * kept in the listing bank (shared by every hunt) for 30 days.
  */
 export const FactsSchema = z.object({
   id: z.string(),

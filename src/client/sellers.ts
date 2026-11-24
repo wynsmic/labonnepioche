@@ -68,7 +68,7 @@ export async function checkStrikingSellers(briefId: string, log: (line: string) 
 
 /**
  * Reads, through the extension, the page of every listing of the hunt whose text is unknown (search
- * results carry no description), paced, and sends texts by small groups. Already read pages (15
+ * results carry no description), paced, and sends texts by small groups. Already read pages (30
  * days, any hunt) are skipped by the server. Stops on a Leboncoin check.
  */
 export async function readDetails(briefId: string, log: (line: string) => void, alive: () => boolean = () => true): Promise<number> {
