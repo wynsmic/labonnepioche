@@ -20,7 +20,8 @@ export interface Llm {
    */
   structured<S extends z.ZodType>(
     schema: S,
-    params: { system: string; context?: string; user: string; effort: Effort },
+    /** `small`: a cheaper model, for simple extraction tasks. */
+    params: { system: string; context?: string; user: string; effort: Effort; small?: boolean },
   ): Promise<z.infer<S>>;
 }
 

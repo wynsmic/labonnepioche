@@ -33,6 +33,17 @@ function FitBounds({ ads, fitKey }: { ads: StoredAd[]; fitKey: string }) {
   return null;
 }
 
+/** Leaflet only measures its box at start: resizing the panes (splitter) must tell it. */
+function FollowSize() {
+  const map = useMap();
+  useEffect(() => {
+    const observer = new ResizeObserver(() => map.invalidateSize());
+    observer.observe(map.getContainer());
+    return () => observer.disconnect();
+  }, [map]);
+  return null;
+}
+
 export function AdMap({
   ads,
   highlighted,
@@ -48,6 +59,7 @@ export function AdMap({
 
   return (
     <MapContainer className="map" bounds={FRANCE} scrollWheelZoom>
+      <FollowSize />
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

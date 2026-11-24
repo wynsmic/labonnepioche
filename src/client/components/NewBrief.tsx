@@ -57,8 +57,8 @@ export function NewBrief({
         France.
       </p>
       <div className="row">
-        <button type="submit" className="primary" disabled={busy || !title || prompt.length < 3}>
-          Créer
+        <button type="submit" className={`primary${busy ? ' is-loading' : ''}`} aria-busy={busy} disabled={busy || !title || prompt.length < 3}>
+          {busy ? 'Création…' : 'Créer'}
         </button>
         {onCancel && (
           <button type="button" className="ghost" onClick={onCancel}>

@@ -3,6 +3,7 @@ import { z } from 'zod';
 /** One Leboncoin search the plan asks to run. */
 export const SearchSchema = z.object({
   label: z.string().describe('Nom court de la recherche, ex. « Corolla hybride < 120 000 km »'),
+  pick: z.string().describe('Nom EXACT (champ name) du choix de la shortlist que cette recherche cible'),
   why: z.string().describe('Pourquoi cette recherche, en une phrase'),
   category: z
     .number()
@@ -45,8 +46,46 @@ export const PickSchema = z.object({
   years: z.string().describe('Années retenues, ex. « 2014–2019 »'),
   why: z.string().describe('Pourquoi c’est un des meilleurs choix, avec les faits qui le prouvent'),
   fair_price: z.string().describe('Prix de marché d’occasion constaté pour ces versions, ex. « 7 000–9 000 € selon km »'),
+  tagline: z
+    .string()
+    .describe('À quoi rime ce modèle, 8 mots maximum, pour se le rappeler d’un coup d’œil (ex. « Break hybride sobre, fiabilité de référence »)'),
+  tags: z
+    .array(z.string())
+    .describe(
+      '3 à 5 repères chiffrés ou distinctifs, vraiment utiles pour choisir, 4 mots maximum chacun (ex. « 4,5 l/100 km », « coffre 596 l », « chaîne de distribution », « boîte e-CVT »)',
+    ),
+  trims: z
+    .array(
+      z.object({
+        name: z.string().describe('Finition telle qu’écrite dans les annonces (« Dynamic », « Design », « GR Sport »)'),
+        note: z.string().describe('Ce qu’elle vaut, 8 mots maximum (« milieu de gamme, caméra et clim auto »)'),
+      }),
+    )
+    .describe('Les finitions courantes de ces versions sur le marché d’occasion, de la plus simple à la plus équipée'),
 });
-export type Pick = z.infer<typeof PickSchema>;
+/** Market price points of a shortlist choice, asked separately from the plan (a lighter call). */
+export const PricePointsSchema = z.object({
+  models: z.array(
+    z.object({
+      name: z.string().describe('Nom EXACT du choix de la shortlist'),
+      price_points: z
+    .array(
+      z.object({
+        year: z.number().int().describe('Année de mise en circulation'),
+        km: z.number().int().describe('Kilométrage typique pour cette année'),
+        price: z.number().int().describe('Prix de marché constaté entre particuliers, bon état, version courante, en euros'),
+      }),
+    )
+    .describe(
+      '4 à 6 prix de marché d’occasion constatés pour ces versions, à des années différentes couvrant les années retenues (et un peu au-delà), chacun avec un kilométrage typique (≈ 13 000 km/an). Sert de courbe de prix du modèle avant l’analyse des annonces',
+    ),
+    }),
+  ),
+});
+export type Pick = z.infer<typeof PickSchema> & {
+  /** Added after the plan (PricePointsSchema); absent on older plans. */
+  price_points?: { year: number; km: number; price: number }[];
+};
 
 export const PlanSchema = z.object({
   shortlist: z
@@ -91,7 +130,9 @@ export const AnalysisSchema = z.object({
     .describe('3 au plus, les plus graves d’abord, 10 mots maximum chacun ; pas l’écart de prix lui-même (déjà affiché)'),
   questions: z
     .array(z.string())
-    .describe('Questions propres à CETTE annonce, à poser au vendeur : 3 au plus, courtes et polies, écrites comme on les lui enverrait (ex. « Pourriez-vous m’envoyer le numéro VIN ? »). Pas les questions habituelles (frais, CT, import, accident, entretien), déjà posées'),
+    .describe(
+      'Questions propres à CETTE annonce, à poser au vendeur : 2 au plus, les plus utiles. Une question par sujet (regroupe ce qui va ensemble, ex. « Pourriez-vous m’envoyer le rapport Autoviza ? » plutôt que deux questions sur ce rapport). Ton neutre et bienveillant, jamais soupçonneux : pas de « pourquoi », pas de reproche. Courtes, écrites comme on les enverrait. Pas les questions habituelles (frais, CT, import, accident, entretien), déjà posées',
+    ),
 });
 export type Analysis = z.infer<typeof AnalysisSchema>;
 
@@ -143,6 +184,10 @@ export interface StoredAd extends Ad {
   comparison: import('./compare').Comparison | null;
   verification: Verification | null;
   sellerCheck: import('./seller').SellerCheck | null;
+  /** What the seller's text says (from the listing bank, read once per listing). */
+  facts?: import('./facts').Facts | null;
+  /** When the message form to the seller was opened from the app. */
+  contactedAt?: string | null;
   firstSeen: string;
   favorite: boolean;
   hidden: boolean;
@@ -157,6 +202,8 @@ export interface Brief {
   zone: string | null;
   locations: string | null;
   updatedAt: string;
+  /** Start of the latest collection (same format as StoredAd.firstSeen); listings first seen since are new. */
+  lastCollectAt: string | null;
 }
 
 /** The listing's current verdict: the check (made with the national comparison) wins over the first analysis. */
@@ -165,3 +212,9 @@ export function verdictOf(ad: StoredAd): { verdict: Verdict; score: number; veri
   if (ad.analysis) return { verdict: ad.analysis.verdict, score: ad.analysis.score, verified: false };
   return null;
 }
+
+/** Answer to a follow-up question about one listing. */
+export const AskAnswerSchema = z.object({ answer: z.string().describe('1 à 3 phrases courtes, ultra concises') });
+
+/** A model the user adds to the hunt by name: its shortlist entry and its Leboncoin search. */
+export const AddModelSchema = z.object({ pick: PickSchema, search: SearchSchema });

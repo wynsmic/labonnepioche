@@ -1,6 +1,6 @@
-import { isExcluded } from './leboncoin';
+import { isExcluded, isMetropolitan } from './leboncoin';
 import type { Ad, Search } from './types';
-import { adjustPrice, fitCurve, type Curve } from './depreciation';
+import { ageFrom, fitMarket, implausibleKm, kmFrom, predict, project, range, type PriceCurve } from './pricing';
 
 /** How a listing compares with very similar ones across France. */
 export interface Comparison {
@@ -26,7 +26,8 @@ export interface Comparison {
    * comparisons saved before that existed: raw prices then).
    */
   adjustedTo?: { year: number | null; km: number | null };
-  curve?: Curve;
+  /** Price curve of the model fitted on these listings (older comparisons: a log-linear law). */
+  curve?: PriceCurve | { perYear: number; per10kKm: number };
   /** Sorted prices (adjusted), for the strip chart. */
   prices: number[];
   /** The cheapest comparable listings, for a look. */
@@ -34,6 +35,8 @@ export interface Comparison {
 }
 
 export const MIN_COMPARABLES = 5;
+/** The same-engine subset is used for the curve only when it is this large. */
+export const MIN_SAME_ENGINE = 15;
 
 /** "98 000 km" -> 98000; "2016" -> 2016. */
 export function numberFrom(value: string | undefined): number | null {
@@ -46,26 +49,27 @@ const mileageOf = (ad: Ad) => numberFrom(ad.attributes.mileage);
 const yearOf = (ad: Ad) => numberFrom(ad.attributes.regdate)?.toString().slice(0, 4) ?? null;
 
 /**
- * National search for listings very close to this one: same make and model, ±1 year,
- * mileage within ±30 %. Falls back to the listing's title words when it has no make/model.
+ * National search for the price curve of this model: same make and model, ±4 years, any mileage
+ * and price (a wide spread of ages and mileages is what makes the curve reliable; price caps would
+ * cut the market). Falls back to the listing's title words when it has no make/model.
  */
 export function comparableQuery(ad: Ad, category: number): Search {
   const make = ad.attributes.brand ?? ad.attributes.u_car_brand;
   const model = ad.attributes.model ?? ad.attributes.u_car_model;
   const text = make && model ? `${make} ${model}` : ad.title.split(/\s+/).slice(0, 3).join(' ');
   const year = Number(yearOf(ad)) || null;
-  const mileage = mileageOf(ad);
   return {
     label: `Comparables de « ${ad.title} »`,
+    pick: '',
     why: 'Repères de prix en France',
     category,
     text,
     price_min: null,
     price_max: null,
-    mileage_min: mileage ? Math.round((mileage * 0.7) / 1000) * 1000 : null,
-    mileage_max: mileage ? Math.round((mileage * 1.3) / 1000) * 1000 : null,
-    regdate_min: year ? year - 1 : null,
-    regdate_max: year ? year + 1 : null,
+    mileage_min: null,
+    mileage_max: null,
+    regdate_min: year ? year - 4 : null,
+    regdate_max: year ? year + 4 : null,
     required_groups: [],
     exclude_keywords: [],
   };
@@ -152,13 +156,14 @@ export function comparables(
   const seen = new Set<string>([ad.id]);
   const pool = candidates.filter((c) => {
     // Same market as the listings we hunt: private sellers only.
-    if (seen.has(c.id) || c.price == null || c.price < 100 || c.seller === 'pro') return false;
+    // Overseas prices are another market.
+    if (seen.has(c.id) || c.price == null || c.price < 100 || c.seller === 'pro' || !isMetropolitan(c)) return false;
     seen.add(c.id);
     return sameVersion(ad, c) && !isExcluded(`${c.title} ${c.body}`, excludeKeywords);
   });
   const engine = engineOf(ad);
   const sameMotor = pool.filter((c) => sameEngine(engine, engineOf(c)));
-  return sameMotor.length >= MIN_COMPARABLES
+  return sameMotor.length >= MIN_SAME_ENGINE
     ? { kept: sameMotor, match: 'motorisation', engine }
     : { kept: pool, match: 'modele', engine };
 }
@@ -176,48 +181,70 @@ function median(values: number[]): number | null {
 }
 
 /**
- * Keeps the truly comparable listings (priced, same version, not disqualified, not this one)
- * and places this listing's price among them. Null when too few remain to say anything.
+ * Fits the price curve of the model on the truly comparable listings (priced, same version, not
+ * disqualified, not this one), then brings each of them to this listing's age and mileage along
+ * that curve. The expected price is the curve at this listing; its range comes from the spread of
+ * the listings around the curve. Null when too few listings remain to fit anything.
  */
-export function compare(ad: Ad, candidates: Ad[], query: Search, excludeKeywords: string[], at: string): Comparison | null {
+export function compare(
+  ad: Ad,
+  candidates: Ad[],
+  query: Search,
+  excludeKeywords: string[],
+  at: string,
+  prior: PriceCurve | null = null,
+  now = Date.parse(at),
+): { comparison: Comparison; curve: PriceCurve } | null {
   if (ad.price == null) return null;
+  const age = ageFrom(ad.attributes, now);
+  if (age == null) return null;
+  const km = kmFrom(ad.attributes);
   const { kept, match, engine } = comparables(ad, candidates, excludeKeywords);
-  if (kept.length < MIN_COMPARABLES) return null;
-  // Each comparable's price as if it had this listing's year and mileage.
-  const to = { year: Number(yearOf(ad)) || null, km: mileageOf(ad) };
-  const curve = fitCurve(kept.map((c) => ({ price: c.price!, year: Number(yearOf(c)) || null, km: mileageOf(c) })));
-  const adjusted = new Map(
-    kept.map((c) => [c.id, Math.round(adjustPrice(c.price!, { year: Number(yearOf(c)) || null, km: mileageOf(c) }, to, curve))]),
-  );
-  const prices = [...adjusted.values()].sort((x, y) => x - y);
-  const pricier = prices.filter((p) => p > ad.price!).length;
-  const cheapest = [...kept].sort((x, y) => adjusted.get(x.id)! - adjusted.get(y.id)!).slice(0, 5);
+  const points = kept
+    .map((c) => ({ ad: c, age: ageFrom(c.attributes, now), km: kmFrom(c.attributes) }))
+    .filter((p): p is { ad: Ad; age: number; km: number | null } => p.age != null);
+  const fit = fitMarket(points.map((p) => ({ age: p.age, km: p.km, price: p.ad.price! })), prior, new Date(now));
+  if (!fit) return null;
+  const to = { age, km };
+  const projected = points
+    .filter((p) => !implausibleKm(p.km, p.age))
+    .map((p) => ({ p, value: Math.round(project(fit.curve, p.ad.price!, { age: p.age, km: p.km }, to)) }));
+  // The strip shows the listings closest in age (the ones the projection moves least).
+  const near = projected.filter((x) => Math.abs(x.p.age - age) <= 2.5);
+  const shown = near.length >= MIN_COMPARABLES ? near : projected;
+  const prices = shown.map((x) => x.value).sort((a, b) => a - b);
+  const expected = predict(fit.curve, age, km);
+  const { low, high } = range(expected, fit.curve.spread);
+  const cheapest = [...shown].sort((a, b) => a.value - b.value).slice(0, 5);
   return {
-    at,
-    query,
-    count: prices.length,
-    median: quantile(prices, 0.5),
-    p25: quantile(prices, 0.25),
-    p75: quantile(prices, 0.75),
-    min: prices[0],
-    max: prices[prices.length - 1],
-    cheaperThan: Math.round((pricier / prices.length) * 100),
-    match,
-    engine: describeEngine(engine),
-    adjustedTo: to,
-    curve,
-    medianMileage: median(kept.map(mileageOf).filter((m): m is number => m != null)),
-    medianYear: median(kept.map((c) => Number(yearOf(c))).filter((y) => y > 0)),
-    prices,
-    cheapest: cheapest.map((c) => ({
-      title: c.title,
-      price: c.price!,
-      adjusted: adjusted.get(c.id)!,
-      mileage: mileageOf(c),
-      year: Number(yearOf(c)) || null,
-      city: c.city,
-      url: c.url,
-    })),
+    curve: fit.curve,
+    comparison: {
+      at,
+      query,
+      count: fit.curve.n,
+      median: Math.round(expected),
+      p25: Math.round(low),
+      p75: Math.round(high),
+      min: prices[0],
+      max: prices[prices.length - 1],
+      cheaperThan: Math.round((prices.filter((v) => v > ad.price!).length / prices.length) * 100),
+      match,
+      engine: describeEngine(engine),
+      adjustedTo: { year: Number(yearOf(ad)) || null, km },
+      curve: fit.curve,
+      medianMileage: median(shown.map((x) => x.p.km).filter((m): m is number => m != null)),
+      medianYear: median(shown.map((x) => Number(yearOf(x.p.ad))).filter((y) => y > 0)),
+      prices,
+      cheapest: cheapest.map(({ p, value }) => ({
+        title: p.ad.title,
+        price: p.ad.price!,
+        adjusted: value,
+        mileage: p.km,
+        year: Number(yearOf(p.ad)) || null,
+        city: p.ad.city,
+        url: p.ad.url,
+      })),
+    },
   };
 }
 

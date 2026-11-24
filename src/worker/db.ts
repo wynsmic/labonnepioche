@@ -1,5 +1,6 @@
 import type { Comparison } from '../shared/compare';
 import type { SellerCheck } from '../shared/seller';
+import type { Facts } from '../shared/facts';
 import type { Ad, Analysis, Brief, Plan, StoredAd, Verification } from '../shared/types';
 
 interface BriefRow {
@@ -9,6 +10,7 @@ interface BriefRow {
   zone: string | null;
   locations: string | null;
   updated_at: string;
+  last_collect_at: string | null;
 }
 
 interface AdRow {
@@ -23,6 +25,8 @@ interface AdRow {
   comparison: string | null;
   verification: string | null;
   seller_check: string | null;
+  facts?: string | null;
+  contacted_at?: string | null;
 }
 
 const toBrief = (r: BriefRow): Brief => ({
@@ -32,6 +36,7 @@ const toBrief = (r: BriefRow): Brief => ({
   zone: r.zone,
   locations: r.locations,
   updatedAt: r.updated_at,
+  lastCollectAt: r.last_collect_at,
 });
 
 const toAd = (r: AdRow): StoredAd => ({
@@ -42,6 +47,8 @@ const toAd = (r: AdRow): StoredAd => ({
   comparison: r.comparison ? (JSON.parse(r.comparison) as Comparison) : null,
   verification: r.verification ? (JSON.parse(r.verification) as Verification) : null,
   sellerCheck: r.seller_check ? (JSON.parse(r.seller_check) as SellerCheck) : null,
+  facts: r.facts ? (JSON.parse(r.facts) as Facts) : null,
+  contactedAt: r.contacted_at ?? null,
   favorite: r.favorite === 1,
   hidden: r.hidden === 1,
   analysis: r.analysis ? (JSON.parse(r.analysis) as Analysis) : null,
@@ -49,14 +56,14 @@ const toAd = (r: AdRow): StoredAd => ({
 
 export async function listBriefs(db: D1Database): Promise<Brief[]> {
   const { results } = await db
-    .prepare('SELECT id, title, prompt, zone, locations, updated_at FROM briefs ORDER BY updated_at DESC')
+    .prepare('SELECT id, title, prompt, zone, locations, updated_at, last_collect_at FROM briefs ORDER BY updated_at DESC')
     .all<BriefRow>();
   return results.map(toBrief);
 }
 
 export async function getBrief(db: D1Database, id: string): Promise<Brief | null> {
   const row = await db
-    .prepare('SELECT id, title, prompt, zone, locations, updated_at FROM briefs WHERE id = ?')
+    .prepare('SELECT id, title, prompt, zone, locations, updated_at, last_collect_at FROM briefs WHERE id = ?')
     .bind(id)
     .first<BriefRow>();
   return row ? toBrief(row) : null;
@@ -151,7 +158,10 @@ export async function latestPlan(db: D1Database, briefId: string): Promise<{ pla
 export async function listAds(db: D1Database, briefId: string): Promise<StoredAd[]> {
   const { results } = await db
     .prepare(
-      'SELECT id, data, search_label, first_seen, analysis, favorite, hidden, first_price, comparison, verification, seller_check FROM ads WHERE brief_id = ? ORDER BY first_seen DESC',
+      `SELECT a.id, a.data, a.search_label, a.first_seen, a.analysis, a.favorite, a.hidden, a.first_price, a.comparison,
+              a.verification, a.seller_check, a.contacted_at, b.facts
+       FROM ads a LEFT JOIN ad_bank b ON b.id = a.id
+       WHERE a.brief_id = ? ORDER BY a.first_seen DESC`,
     )
     .bind(briefId)
     .all<AdRow>();
@@ -250,8 +260,14 @@ export async function setAdFlags(
   db: D1Database,
   briefId: string,
   adId: string,
-  flags: { favorite?: boolean; hidden?: boolean },
+  flags: { favorite?: boolean; hidden?: boolean; contacted?: boolean },
 ): Promise<void> {
+  if (flags.contacted !== undefined) {
+    await db
+      .prepare('UPDATE ads SET contacted_at = ? WHERE brief_id = ? AND id = ?')
+      .bind(flags.contacted ? new Date().toISOString() : null, briefId, adId)
+      .run();
+  }
   if (flags.favorite !== undefined) {
     await db
       .prepare('UPDATE ads SET favorite = ? WHERE brief_id = ? AND id = ?')
@@ -282,8 +298,9 @@ export async function saveComparison(db: D1Database, briefId: string, adId: stri
 }
 
 /** Every listing goes back to the analysis queue (after a change in the rules). */
+/** A new plan: verdicts (first analysis and price check) are stale; the price comparison stays (it does not depend on the demand). */
 export async function resetAnalyses(db: D1Database, briefId: string): Promise<void> {
-  await db.prepare('UPDATE ads SET analysis = NULL, analysis_attempts = 0 WHERE brief_id = ?').bind(briefId).run();
+  await db.prepare('UPDATE ads SET analysis = NULL, analysis_attempts = 0, verification = NULL WHERE brief_id = ?').bind(briefId).run();
 }
 
 export async function saveVerification(
@@ -299,23 +316,6 @@ export async function saveVerification(
     .run();
 }
 
-
-/** Listings of a national search read less than `maxAgeDays` ago, with when they were read. */
-export async function getCachedSearch(db: D1Database, key: string, maxAgeDays: number): Promise<{ ads: Ad[]; at: string } | null> {
-  const row = await db
-    .prepare('SELECT ads, created_at FROM search_cache WHERE key = ? AND created_at > ?')
-    .bind(key, new Date(Date.now() - maxAgeDays * 86_400_000).toISOString())
-    .first<{ ads: string; created_at: string }>();
-  return row ? { ads: JSON.parse(row.ads) as Ad[], at: row.created_at } : null;
-}
-
-export async function putCachedSearch(db: D1Database, key: string, ads: Ad[], at: string): Promise<void> {
-  await db.batch([
-    db.prepare('INSERT OR REPLACE INTO search_cache (key, created_at, ads) VALUES (?, ?, ?)').bind(key, at, JSON.stringify(ads)),
-    // Housekeeping: nothing older than a week is worth keeping.
-    db.prepare('DELETE FROM search_cache WHERE created_at < ?').bind(new Date(Date.now() - 7 * 86_400_000).toISOString()),
-  ]);
-}
 
 /** Drops the listings a collection started at `since` did not read again (favourites and listings of `keepLabels` searches stay). */
 export async function pruneUnseen(db: D1Database, briefId: string, since: string, keepLabels: string[]): Promise<number> {
@@ -335,5 +335,74 @@ export async function setSellerId(db: D1Database, briefId: string, adId: string,
   await db
     .prepare("UPDATE ads SET data = json_set(data, '$.sellerId', ?) WHERE brief_id = ? AND id = ?")
     .bind(sellerId, briefId, adId)
+    .run();
+}
+
+/** First call of a collection run: its start becomes the "new listing" threshold. */
+export async function markCollectRun(db: D1Database, briefId: string, run: string): Promise<void> {
+  await db
+    .prepare("UPDATE briefs SET last_collect_at = datetime('now'), collect_run = ? WHERE id = ? AND collect_run IS NOT ?")
+    .bind(run, briefId, run)
+    .run();
+}
+
+/** Writes the seller's text read on the listing page into the hunt's listings; a new text voids the analysis. */
+export async function applyDetails(db: D1Database, briefId: string, details: { id: string; body: string; sellerId: string | null }[]): Promise<number> {
+  if (!details.length) return 0;
+  const statement = db.prepare(
+    `UPDATE ads SET
+       analysis = CASE WHEN json_extract(data, '$.body') IS NOT ? THEN NULL ELSE analysis END,
+       analysis_attempts = CASE WHEN json_extract(data, '$.body') IS NOT ? THEN 0 ELSE analysis_attempts END,
+       verification = CASE WHEN json_extract(data, '$.body') IS NOT ? THEN NULL ELSE verification END,
+       data = json_set(data, '$.body', ?, '$.sellerId', COALESCE(?, json_extract(data, '$.sellerId')))
+     WHERE brief_id = ? AND id = ?`,
+  );
+  const stmts = details.map((d) => statement.bind(d.body, d.body, d.body, d.body, d.sellerId, briefId, d.id));
+  let changed = 0;
+  for (let i = 0; i < stmts.length; i += 50) {
+    const results = await db.batch(stmts.slice(i, i + 50));
+    changed += results.reduce((n, r) => n + (r.meta.changes ?? 0), 0);
+  }
+  return changed;
+}
+
+/** Price curves of these model keys fitted less than `maxAgeDays` ago. */
+export async function curvesFor(db: D1Database, keys: string[], maxAgeDays: number): Promise<Record<string, import('../shared/pricing').PriceCurve>> {
+  const out: Record<string, import('../shared/pricing').PriceCurve> = {};
+  const unique = [...new Set(keys)];
+  const since = new Date(Date.now() - maxAgeDays * 86_400_000).toISOString();
+  for (let i = 0; i < unique.length; i += 90) {
+    const chunk = unique.slice(i, i + 90);
+    if (!chunk.length) continue;
+    const { results } = await db
+      .prepare(`SELECT key, curve FROM model_curves WHERE fitted_at > ? AND key IN (${chunk.map(() => '?').join(',')})`)
+      .bind(since, ...chunk)
+      .all<{ key: string; curve: string }>();
+    for (const r of results) out[r.key] = JSON.parse(r.curve);
+  }
+  return out;
+}
+
+export async function saveCurve(db: D1Database, key: string, curve: import('../shared/pricing').PriceCurve): Promise<void> {
+  await db
+    .prepare('INSERT OR REPLACE INTO model_curves (key, curve, fitted_at) VALUES (?, ?, ?)')
+    .bind(key, JSON.stringify(curve), curve.fittedAt ?? new Date().toISOString())
+    .run();
+}
+
+export async function searchReadAt(db: D1Database, url: string): Promise<string | null> {
+  const row = await db.prepare('SELECT read_at FROM search_reads WHERE url = ?').bind(url).first<{ read_at: string }>();
+  return row?.read_at ?? null;
+}
+
+export async function markSearchRead(db: D1Database, url: string, at: string): Promise<void> {
+  await db.prepare('INSERT OR REPLACE INTO search_reads (url, read_at) VALUES (?, ?)').bind(url, at).run();
+}
+
+/** Rewrites the latest plan of a hunt in place (added data only: no new version). */
+export async function updateLatestPlan(db: D1Database, briefId: string, plan: Plan): Promise<void> {
+  await db
+    .prepare('UPDATE plans SET plan = ? WHERE id = (SELECT id FROM plans WHERE brief_id = ? ORDER BY created_at DESC LIMIT 1)')
+    .bind(JSON.stringify(plan), briefId)
     .run();
 }

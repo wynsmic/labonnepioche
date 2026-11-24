@@ -35,7 +35,7 @@ export function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
         autoFocus
       />
       {error && <p className="error-text">{error}</p>}
-      <button type="submit" className="primary" disabled={busy || !password}>
+      <button type="submit" className={`primary${busy ? ' is-loading' : ''}`} aria-busy={busy} disabled={busy || !password}>
         {busy ? 'Connexion…' : 'Se connecter'}
       </button>
     </form>

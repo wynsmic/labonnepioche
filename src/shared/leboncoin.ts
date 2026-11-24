@@ -70,7 +70,7 @@ const normalize = (text: string) =>
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim();
 
-const firstNumber = (value: string | undefined) => {
+export const firstNumber = (value: string | undefined) => {
   const digits = value?.replace(/[^\d]/g, '') ?? '';
   return digits ? Number(digits) : null;
 };
@@ -80,7 +80,8 @@ export function hasRequiredWords(ad: Ad, groups: string[][] | undefined): boolea
   if (!groups?.length) return true;
   const haystack = ` ${normalize(`${ad.title} ${ad.body} ${Object.values(ad.attributes).join(' ')}`)} `;
   return groups.every((group) => {
-    const words = group.map(normalize).filter((w) => w.length > 0);
+    // A one-letter word ("h" for hybrid) would match the start of almost any word: ignored.
+    const words = group.map(normalize).filter((w) => w.length > 1);
     return !words.length || words.some((w) => haystack.includes(` ${w}`));
   });
 }
@@ -90,8 +91,18 @@ export function hasRequiredWords(ad: Ad, groups: string[][] | undefined): boolea
  * search (all its keywords in the title or make/model, the version's required words, price, year
  * and mileage within range). Unknown values pass.
  */
+/**
+ * Mainland France and Corsica: overseas postcodes (97x, 98x) and positions outside the mainland box
+ * are out (shipping or travel costs make them no deal). Unknown place passes.
+ */
+export function isMetropolitan(ad: Pick<Ad, 'zipcode' | 'lat' | 'lng'>): boolean {
+  if (ad.zipcode && /^9[78]/.test(ad.zipcode.trim())) return false;
+  if (ad.lat != null && ad.lng != null) return ad.lat >= 41 && ad.lat <= 51.5 && ad.lng >= -5.5 && ad.lng <= 10;
+  return true;
+}
+
 export function matchesSearch(ad: Ad, search: Search): boolean {
-  if (ad.seller === 'pro') return false;
+  if (ad.seller === 'pro' || !isMetropolitan(ad)) return false;
   const haystack = ` ${normalize(`${ad.title} ${ad.attributes.brand ?? ''} ${ad.attributes.model ?? ''}`)} `;
   const words = normalize(search.text).split(' ').filter((w) => w.length > 1);
   if (!words.every((w) => haystack.includes(` ${w} `) || haystack.includes(` ${w}`))) return false;

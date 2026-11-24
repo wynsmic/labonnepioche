@@ -30,12 +30,12 @@ export function openaiLlm(env: Env): Llm {
 
     async structured<S extends z.ZodType>(
       schema: S,
-      params: { system: string; context?: string; user: string; effort: 'low' | 'medium' | 'high' },
+      params: { system: string; context?: string; user: string; effort: 'low' | 'medium' | 'high'; small?: boolean },
     ): Promise<z.infer<S>> {
       // OpenAI caches long identical prefixes by itself: keep the stable context first.
       const instructions = params.context ? `${params.system}\n\n${params.context}` : params.system;
       const response = await client().responses.parse({
-        model: env.OPENAI_MODEL,
+        model: params.small ? (env.OPENAI_SMALL_MODEL ?? 'gpt-5-mini') : env.OPENAI_MODEL,
         instructions,
         input: params.user,
         reasoning: { effort: params.effort },

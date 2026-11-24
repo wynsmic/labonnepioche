@@ -95,3 +95,70 @@ export function extractOwner() {
     return null;
   }
 }
+
+/**
+ * Listing page: the seller's full text, the seller id and the attributes, from the page's
+ * __NEXT_DATA__ (the search results do not carry the description). Runs inside the tab.
+ */
+export function extractDetail() {
+  if (document.querySelector('iframe[src*="captcha-delivery"], iframe[src*="datadome"], iframe[src*="captcha"]')) {
+    return { ok: false, reason: 'captcha' };
+  }
+  const script = document.getElementById('__NEXT_DATA__');
+  if (!script || !script.textContent) return { ok: false, reason: 'no-data' };
+  let data;
+  try {
+    data = JSON.parse(script.textContent);
+  } catch {
+    return { ok: false, reason: 'bad-json' };
+  }
+  const ad = find(data, 0);
+  if (!ad) return { ok: false, reason: 'no-ad' };
+  const attributes = {};
+  for (const a of Array.isArray(ad.attributes) ? ad.attributes : []) {
+    if (a && a.key) attributes[a.key] = String(a.value_label ?? a.value ?? '');
+  }
+  return {
+    ok: true,
+    id: String(ad.list_id),
+    body: String(ad.body ?? ''),
+    price: Array.isArray(ad.price) ? Number(ad.price[0]) : typeof ad.price === 'number' ? ad.price : null,
+    sellerId: ad.owner && ad.owner.user_id ? String(ad.owner.user_id) : null,
+    sellerName: ad.owner && ad.owner.name ? String(ad.owner.name) : null,
+    attributes,
+    // The whole listing, for one added by hand (same shape as a search result).
+    ad: (() => {
+      const loc = ad.location || {};
+      const images = ad.images || {};
+      const url = typeof ad.url === 'string' && ad.url ? ad.url : location.href.split('?')[0];
+      return {
+        id: String(ad.list_id),
+        url: url.startsWith('http') ? url : `https://www.leboncoin.fr${url}`,
+        title: String(ad.subject ?? ''),
+        body: String(ad.body ?? ''),
+        price: Array.isArray(ad.price) ? Number(ad.price[0]) : typeof ad.price === 'number' ? ad.price : null,
+        date: ad.first_publication_date ?? ad.index_date ?? null,
+        city: loc.city ?? null,
+        zipcode: loc.zipcode ?? null,
+        lat: typeof loc.lat === 'number' ? loc.lat : null,
+        lng: typeof loc.lng === 'number' ? loc.lng : null,
+        image: images.thumb_url ?? (Array.isArray(images.urls_thumb) ? images.urls_thumb[0] : null) ?? images.small_url ?? (Array.isArray(images.urls) ? images.urls[0] : null) ?? null,
+        seller: ad.owner && ad.owner.type ? (ad.owner.type === 'pro' ? 'pro' : 'private') : null,
+        sellerId: ad.owner && ad.owner.user_id ? String(ad.owner.user_id) : null,
+        sellerName: ad.owner && ad.owner.name ? String(ad.owner.name) : null,
+        attributes,
+      };
+    })(),
+  };
+
+  /** The listing object: the first one with a list_id and a body. */
+  function find(node, depth) {
+    if (!node || depth > 14 || typeof node !== 'object') return null;
+    if (!Array.isArray(node) && node.list_id != null && typeof node.body === 'string') return node;
+    for (const value of Array.isArray(node) ? node : Object.values(node)) {
+      const found = find(value, depth + 1);
+      if (found) return found;
+    }
+    return null;
+  }
+}

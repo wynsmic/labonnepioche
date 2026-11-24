@@ -3,7 +3,7 @@ import { buildSearchUrl } from '../../shared/leboncoin';
 import { parseZone } from '../../shared/zone';
 import { api, type BriefDetail } from '../api';
 import { extensionReady, fetchListings } from '../extension';
-import { checkStrikingSellers } from '../sellers';
+import { checkStrikingSellers, readDetails } from '../sellers';
 
 const PAGES_PER_SEARCH = 2;
 /** Pause between two Leboncoin pages, like a person browsing. */
@@ -22,6 +22,101 @@ function zoneLabel(zone: string | null): string {
     .join(', ');
 }
 
+/** When the listings were last fetched, short and relative: « il y a 3 h », « hier à 18:40 », « lun. 23/11 à 18:40 ». */
+function lastFetch(at: string | null): { short: string; full: string } | null {
+  if (!at) return null;
+  // SQLite datetime('now'): UTC without a zone.
+  const d = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(at) ? at : `${at.replace(' ', 'T')}Z`);
+  if (Number.isNaN(d.getTime())) return null;
+  const min = Math.round((Date.now() - d.getTime()) / 60_000);
+  const time = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  const day = (x: Date) => x.toDateString();
+  const yesterday = new Date(Date.now() - 86_400_000);
+  const short =
+    min < 1
+      ? 'à l’instant'
+      : min < 60
+        ? `il y a ${min} min`
+        : min < 6 * 60
+          ? `il y a ${Math.round(min / 60)} h`
+          : day(d) === day(new Date())
+            ? `aujourd’hui à ${time}`
+            : day(d) === day(yesterday)
+              ? `hier à ${time}`
+              : `${d.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit' })} à ${time}`;
+  return { short, full: d.toLocaleString('fr-FR', { dateStyle: 'full', timeStyle: 'short' }) };
+}
+
+/** ✕ next to a shortlist choice: removes the model (and its searches) from the hunt, after a confirm. */
+function RemoveModel({ name, disabled, onRemove }: { name: string; disabled: boolean; onRemove: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      type="button"
+      className={`remove-model${busy ? ' is-loading' : ''}`}
+      title="Retirer ce modèle de la recherche"
+      aria-label={`Retirer ${name} de la recherche`}
+      disabled={disabled || busy}
+      onClick={async () => {
+        if (!window.confirm(`Retirer « ${name} » de la recherche ? Ses annonces déjà trouvées restent dans la liste.`)) return;
+        setBusy(true);
+        try {
+          await onRemove();
+        } catch (err) {
+          window.alert((err as Error).message);
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      {busy ? '' : '✕'}
+    </button>
+  );
+}
+
+/** « + Ajouter un modèle » : a model of the user's choice joins the hunt (the AI fills in versions, prices, search). */
+function AddModel({ onAdd }: { onAdd: (name: string) => Promise<void> }) {
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <form
+      className="add-model"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (name.trim().length < 2 || busy) return;
+        setBusy(true);
+        setError(null);
+        try {
+          await onAdd(name.trim());
+          setName('');
+        } catch (err) {
+          setError((err as Error).message);
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="Ajouter un modèle (ex. Toyota C-HR hybride)"
+        aria-label="Modèle à ajouter à la recherche"
+        maxLength={120}
+        disabled={busy}
+      />
+      <button type="submit" className={`action${busy ? ' is-loading' : ''}`} disabled={busy || name.trim().length < 2}>
+        {busy ? 'L’IA prépare…' : '＋ Ajouter'}
+      </button>
+      {error && (
+        <span className="small bench-error" role="alert">
+          {error}
+        </span>
+      )}
+    </form>
+  );
+}
+
 export function HuntPanel({
   detail,
   onChanged,
@@ -34,6 +129,13 @@ export function HuntPanel({
   onError: (message: string) => void;
 }) {
   const { brief, plan, versions, pending } = detail;
+  // Re-rendered each minute so « il y a 5 min » stays true.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTick((n) => n + 1), 60_000);
+    return () => clearInterval(t);
+  }, []);
+  const fetched = lastFetch(brief.lastCollectAt);
   const [prompt, setPrompt] = useState(brief.prompt);
   const [note, setNote] = useState('');
   const [zone, setZone] = useState('');
@@ -129,7 +231,7 @@ export function HuntPanel({
             />
             <button
               type="button"
-              className="primary"
+              className={`primary${busy === 'save' ? ' is-loading' : ''}`}
               disabled={!!busy}
               onClick={() =>
                 run('save', async () => {
@@ -173,6 +275,7 @@ export function HuntPanel({
           />
           <button
             type="button"
+            className={busy === 'zone' ? 'is-loading' : undefined}
             disabled={!!busy}
             onClick={() =>
               run('zone', async () => {
@@ -193,7 +296,8 @@ export function HuntPanel({
       <div className="steps">
         <button
           type="button"
-          className="primary"
+          className={`primary${busy === 'plan' ? ' is-loading' : ''}`}
+          aria-busy={busy === 'plan'}
           disabled={!!busy || promptDirty}
           title={promptDirty ? 'Enregistre d’abord la demande' : undefined}
           onClick={() =>
@@ -209,7 +313,8 @@ export function HuntPanel({
         </button>
         <button
           type="button"
-          className="primary"
+          className={`primary${busy === 'collect' || busy === 'details' || busy === 'sellers' ? ' is-loading' : ''}`}
+          aria-busy={busy === 'collect' || busy === 'details' || busy === 'sellers'}
           disabled={!!busy || !plan || selected.size === 0}
           onClick={() =>
             run('collect', async () => {
@@ -221,6 +326,8 @@ export function HuntPanel({
               // The list becomes what Leboncoin shows now: at the end of a complete collection,
               // what was not read again goes (favourites stay; unchanged listings keep their analysis).
               let since: string | null = null;
+              // One id per collection: the server dates the start of this run, listings seen first after it are "new".
+              const collectRun = crypto.randomUUID();
               let complete = true;
               let read = 0;
               for (const search of searches) {
@@ -242,11 +349,11 @@ export function HuntPanel({
                   if (result.source && !/searchData\.ads$/.test(result.source)) {
                     addLog(`Attention : liste lue « ${result.source} » parmi ${result.lists.join(', ')}.`);
                   }
-                  const counts = await api.addAds(brief.id, search.label, result.ads);
+                  const counts = await api.addAds(brief.id, search.label, result.ads, collectRun);
                   since ??= counts.seenAt;
                   read += result.ads.length;
                   addLog(
-                    `${result.ads.length} lues : ${counts.added} nouvelles, ${counts.offTarget} hors critères, ${counts.excluded} exclues.`,
+                    `${result.ads.length} lues : ${counts.added} nouvelles, ${counts.offTarget} hors critères, ${counts.excluded} exclues${counts.restored ? `, ${counts.restored} reprises du cache (15 j)` : ''}.`,
                   );
                   if (result.ads.length < 20) break; // last page
                   await sleep(PAUSE_MS[0] + Math.random() * (PAUSE_MS[1] - PAUSE_MS[0]));
@@ -260,6 +367,12 @@ export function HuntPanel({
                 addLog('Collecte incomplète : les anciennes annonces sont gardées.');
               }
               await onChanged();
+              // Search results carry no description: read each new listing's page (once, 15 days).
+              setBusy('details');
+              const details = await readDetails(brief.id, addLog, () => alive.current);
+              if (details) addLog(`${details} textes d’annonces lus.`);
+              await onChanged();
+              if (!alive.current) return;
               // The flow ends on an analysed list.
               setBusy('analyse');
               addLog('L’IA analyse les nouvelles annonces…');
@@ -272,20 +385,34 @@ export function HuntPanel({
             })
           }
         >
-          {busy === 'collect' ? 'Lecture de Leboncoin…' : '2. Récupérer les annonces'}
+          <span>
+            {busy === 'collect' ? 'Lecture de Leboncoin…' : busy === 'details' ? 'Lecture des annonces…' : busy === 'sellers' ? 'Vérification des vendeurs…' : '2. Récupérer les annonces'}
+          </span>
+          {fetched && (
+            <span className="btn-sub" title={`Dernière pêche : ${fetched.full}`}>
+              dernière pêche {fetched.short}
+            </span>
+          )}
         </button>
         <button
           type="button"
-          className="primary"
+          className={`primary${busy === 'analyse' ? ' is-loading' : ''}`}
+          aria-busy={busy === 'analyse'}
           disabled={!!busy || pending === 0}
           onClick={() =>
             run('analyse', async () => {
-              addLog(`L’IA analyse les annonces (${pending} restantes)…`);
+              // The analysis needs the sellers' texts: read the pages still unknown first.
+              const details = await readDetails(brief.id, addLog, () => alive.current);
+              if (details) {
+                addLog(`${details} textes d’annonces lus.`);
+                await onChanged();
+              }
+              addLog('L’IA analyse les annonces…');
               await analyseAll();
             })
           }
         >
-          {busy === 'analyse' ? 'Analyse…' : `3. Analyser${pending ? ` (${pending})` : ''}`}
+          {busy === 'analyse' ? `Analyse…${pending ? ` (${pending} restantes)` : ''}` : `3. Analyser${pending ? ` (${pending})` : ''}`}
         </button>
       </div>
 
@@ -317,11 +444,34 @@ export function HuntPanel({
                   <span className={`tier ${p.tier}`}>{p.tier === 'excellent' ? 'Excellent' : 'Très bon'}</span>
                 )}{' '}
                 <strong>{p.name}</strong> · {p.versions.join(', ')} · {p.years}
+                <RemoveModel
+                  name={p.name}
+                  disabled={!!busy || plan.plan.shortlist.length <= 1}
+                  onRemove={async () => {
+                    const r = await api.removeModel(brief.id, p.name);
+                    // Search indexes shift down past each removed one.
+                    setSelected((prev) => {
+                      const next = new Set<number>();
+                      for (const i of prev) if (!r.removed.includes(i)) next.add(i - r.removed.filter((j) => j < i).length);
+                      return next;
+                    });
+                    addLog(`Modèle retiré : ${p.name}${r.removed.length ? ` (${r.removed.length} recherche${r.removed.length > 1 ? 's' : ''} en moins)` : ''}. Ses annonces déjà trouvées restent.`);
+                    await onChanged();
+                  }}
+                />
                 <span className="muted small"> — marché {p.fair_price}</span>
                 <div className="muted small">{p.why}</div>
               </li>
             ))}
           </ul>
+          <AddModel
+            onAdd={async (name) => {
+              const r = await api.addModel(brief.id, name);
+              addLog(`Modèle ajouté : ${r.pick.name} (recherche « ${r.search.label} »). Lance « Récupérer » pour ses annonces.`);
+              await onChanged();
+              setSelected((prev) => new Set([...prev, r.index]));
+            }}
+          />
         </details>
       )}
       {plan && (

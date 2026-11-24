@@ -5,6 +5,7 @@ import type { Search } from '../src/shared/types';
 
 const search: Search = {
   label: 'Yaris',
+  pick: 'Toyota Yaris III',
   why: 'fiable',
   category: 2,
   text: ' yaris hybride ',

@@ -1,9 +1,16 @@
-import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { verdictOf, type Search, type StoredAd, type Verdict } from '../../shared/types';
-import { Benchmarks } from './Benchmarks';
+import { useMemo, useRef, useState } from 'react';
+import { verdictOf, type Plan, type Search, type StoredAd, type Verdict } from '../../shared/types';
+import { keyFacts, pickOf, trimOf, type ModelCard } from '../../shared/models';
+import { Benchmarks, PriceDetail } from './Benchmarks';
+import { DetailToggle } from './DetailToggle';
 import { ageInDays } from '../../shared/compare';
 import { estimateAll } from '../../shared/estimate';
+import type { PriceCurve } from '../../shared/pricing';
 import { sellerMessage } from '../../shared/message';
+import { SELLER_CHECK_DISCOUNT } from '../../shared/seller';
+import { SellerLine } from './SellerLine';
+import { routeUrl, useHome } from '../home';
+import { composeMessage } from '../extension';
 
 export const VERDICT_LABEL: Record<Verdict, string> = {
   pepite: 'Pépite',
@@ -19,6 +26,21 @@ type Sort = 'score' | 'discount' | 'price' | 'recent';
 /** Off the shortlist according to the current verdict: hidden unless asked for. */
 export const isOffTopic = (ad: StoredAd) => verdictOf(ad)?.verdict === 'hors_sujet';
 
+const fold = (t: string) => t.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
+
+/**
+ * Not a deal, hidden unless asked for: Leboncoin rates the price fair or higher; or, when
+ * Leboncoin gives no verdict (no estimate for that car, its choice, not the deal's), our analysis
+ * says « correct » or « cher ». Not yet analysed listings stay visible.
+ */
+export const isLbcPricey = (ad: StoredAd) => {
+  const lbc = fold(ad.attributes.car_price_positioning ?? '');
+  if (/bonne affaire/.test(lbc)) return false;
+  if (/equitable|superieur|au-dessus/.test(lbc)) return true;
+  const verdict = verdictOf(ad)?.verdict;
+  return verdict === 'correct' || verdict === 'cher';
+};
+
 /** Listings with an unknown date stay visible. */
 export function isRecent(ad: StoredAd, maxAgeDays: number | null): boolean {
   if (maxAgeDays == null) return true;
@@ -26,65 +48,304 @@ export function isRecent(ad: StoredAd, maxAgeDays: number | null): boolean {
   return age == null || age <= maxAgeDays;
 }
 
-function ageLabel(date: string | null): string | null {
-  const days = ageInDays(date);
-  if (days == null) return null;
-  if (days < 1) return `il y a ${Math.max(1, Math.round(days * 24))} h`;
-  return `il y a ${Math.floor(days)} j`;
-}
-
 const euro = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
 
-/** Main characteristics shown under the title, in Leboncoin's order. */
-function facts(ad: StoredAd): string {
-  const a = ad.attributes;
-  return [a.regdate, a.mileage ? `${a.mileage}`.replace(/km$/i, '').trim() + ' km' : null, a.fuel, a.gearbox]
-    .filter(Boolean)
-    .join(' · ');
-}
-
 /** Copies a first message to the seller, adapted to the listing. */
-function CopyMessage({ ad }: { ad: StoredAd }) {
-  const [state, setState] = useState<'idle' | 'done' | 'error'>('idle');
+/** The message icon stays blue this long after the seller was written to. */
+const CONTACTED_DAYS = 15;
+
+function CopyMessage({ ad, onContacted }: { ad: StoredAd; onContacted: () => void }) {
+  const [state, setState] = useState<'idle' | 'filled' | 'copied' | 'error'>('idle');
+  const contacted = ad.contactedAt != null && Date.now() - Date.parse(ad.contactedAt) < CONTACTED_DAYS * 86_400_000;
   return (
-    <button
-      type="button"
-      className="ghost small"
-      title="Copie un premier message au vendeur, adapté à cette annonce"
-      onClick={async () => {
-        try {
-          await navigator.clipboard.writeText(sellerMessage(ad));
-          setState('done');
-        } catch {
-          setState('error');
-        }
-        setTimeout(() => setState('idle'), 2_000);
-      }}
-    >
-      {state === 'done' ? 'Message copié ✓' : state === 'error' ? 'Copie impossible' : '✉ Copier un message'}
-    </button>
+    <span className="copy-msg">
+      <button
+        type="button"
+        className={`icon-toggle msg-button${contacted ? ' is-contacted' : ''}`}
+        title={`${contacted ? `Message préparé le ${new Date(ad.contactedAt!).toLocaleDateString('fr-FR')}. ` : ''}Écrire au vendeur : ouvre le formulaire de message de Leboncoin avec un premier message adapté à cette annonce (copié aussi)`}
+        aria-label="Écrire au vendeur sur Leboncoin"
+        onClick={async () => {
+          const text = sellerMessage(ad);
+          onContacted();
+          const url = `https://www.leboncoin.fr/reply/${ad.id}`;
+          let copied = false;
+          try {
+            await navigator.clipboard.writeText(text);
+            copied = true;
+          } catch {
+            /* the form may still be filled */
+          }
+          // The extension opens the form and types the message; without it, a plain tab (paste it).
+          const filled = await composeMessage(url, text)
+            .then((r) => r.ok && r.filled)
+            .catch(() => {
+              window.open(url, '_blank', 'noopener');
+              return false;
+            });
+          setState(filled ? 'filled' : copied ? 'copied' : 'error');
+          setTimeout(() => setState('idle'), 2_500);
+        }}
+      >
+        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
+          <rect x="3" y="5" width="18" height="14" rx="2" />
+          <path d="m3.5 6.5 8.5 6.5 8.5-6.5" />
+        </svg>
+      </button>
+      {state !== 'idle' && (
+        <span className={`copy-toast${state === 'error' ? ' is-error' : ''}`} role="status">
+          {state === 'filled' ? 'Message prêt sur Leboncoin ✓' : state === 'copied' ? 'Message copié : colle-le sur Leboncoin' : 'Copie impossible'}
+        </span>
+      )}
+    </span>
   );
 }
 
-/** Shows the first lines only; hovering (or focusing) shows the rest over what follows. */
-function Clamp({ children }: { children: ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [clamped, setClamped] = useState(false);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const check = () => setClamped(el.scrollHeight > el.clientHeight + 2);
-    check();
-    const observer = new ResizeObserver(check);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [children]);
+/** « + Ajouter une annonce » : any Leboncoin listing, from its link, through the same analysis. */
+function AddListing({ onAdd }: { onAdd: (url: string) => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const [url, setUrl] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!open) {
+    return (
+      <button type="button" className="add-listing" onClick={() => setOpen(true)} title="Ajouter une annonce Leboncoin de ton choix, à partir de son lien, et l’analyser">
+        <span aria-hidden>＋</span> Ajouter une annonce
+      </button>
+    );
+  }
   return (
-    <div className={`clamp${clamped ? ' is-clamped' : ''}`} tabIndex={clamped ? 0 : undefined}>
-      <div ref={ref} className="clamp-box">
-        <div className="clamp-inner">{children}</div>
+    <form
+      className="add-listing-form"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (!url.trim() || busy) return;
+        setBusy(true);
+        setError(null);
+        try {
+          await onAdd(url.trim());
+          setUrl('');
+          setOpen(false);
+        } catch (err) {
+          setError((err as Error).message);
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <input
+        type="url"
+        autoFocus
+        placeholder="https://www.leboncoin.fr/ad/voitures/…"
+        value={url}
+        onChange={(e) => setUrl(e.target.value)}
+        aria-label="Lien de l’annonce Leboncoin"
+        disabled={busy}
+      />
+      <button type="submit" className={`action primary-action${busy ? ' is-loading' : ''}`} disabled={busy || !url.trim()}>
+        {busy ? 'Lecture et analyse…' : 'Analyser'}
+      </button>
+      {!busy && (
+        <button type="button" className="icon-toggle" onClick={() => setOpen(false)} aria-label="Annuler" title="Annuler">
+          ✕
+        </button>
+      )}
+      {error && (
+        <span className="small bench-error add-listing-error" role="alert">
+          {error}
+        </span>
+      )}
+    </form>
+  );
+}
+
+/** Year, mileage, engine, gearbox under the photo, as a 2×2 grid of self-explanatory values. */
+function Specs({ ad, pick }: { ad: StoredAd; pick: ModelCard | null }) {
+  const facts = keyFacts(ad, pick);
+  if (!facts.length) return null;
+  return (
+    <ul className="specs">
+      {facts.map((f) => (
+        <li key={f.label} className="spec" title={f.label}>
+          {f.value}
+          {f.hint && <span className={`spec-hint${f.tone ? ` ${f.tone}` : ''}`}>{f.hint}</span>}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** The shortlist choice the listing belongs to: name and level, what it is about, key figures, the trim. */
+function ModelInfo({ ad, pick }: { ad: StoredAd; pick: ModelCard | null }) {
+  const trim = trimOf(ad, pick);
+  const card = pick && (pick.tagline || pick.tags?.length) ? pick : null;
+  if (!card && !trim) return null;
+  return (
+    <div className="model small">
+      {card && (
+        <>
+          {card.tagline && <div className="model-tagline">{card.tagline}</div>}
+          {!!card.tags?.length && (
+            <ul className="model-tags">
+              {card.tags.map((t) => (
+                <li key={t}>{t}</li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+      {trim && (
+        <div className="model-trim">
+          <span className="model-label">Finition</span> <strong>{trim.name}</strong>
+          {trim.note && <span className="muted"> · {trim.note}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const SCORE_HELP =
+  'Score d’intérêt sur 100 donné par l’IA pour ta demande : prix face au marché (ajusté à l’année et au km), état et historique, version conforme aux choix retenus, signaux d’alerte. Plus il est haut, plus l’annonce vaut le déplacement.';
+
+/** The AI verdict in one line: label, score, short comment, and the toggle of its detail. */
+function VerdictFoot({ ad, open, onToggle }: { ad: StoredAd; open: boolean; onToggle: () => void }) {
+  const current = verdictOf(ad);
+  const a = ad.analysis;
+  if (!current || !a) return null;
+  const v = ad.verification;
+  const comment = v ? v.cause.charAt(0).toUpperCase() + v.cause.slice(1) : a.summary;
+  return (
+    <div className={`verdict-wrap${open ? ' is-open' : ''}`}>
+      <div className="verdict-foot">
+        <span className={`verdict v-${current.verdict}`}>
+          {VERDICT_LABEL[current.verdict]}
+          {current.verified ? ' ✓' : ''}
+        </span>
+        <span className="score" title={`${SCORE_HELP}${current.verified ? ' ✓ : recalculé après la vérification France.' : ''}`}>
+          {current.score}
+          <small>/100</small>
+        </span>
+        <span className="verdict-comment" title={comment}>
+          {comment}
+        </span>
+        <DetailToggle open={open} onClick={onToggle} label="le détail du verdict" />
       </div>
     </div>
+  );
+}
+
+/** Everything behind the verdict: score meaning, check detail, notes, the seller's text (selectable). */
+/** Follow-up questions to the AI about this listing, at the foot of its detail; short answers. */
+function AskBox({ ask }: { ask: (question: string, history: { q: string; a: string }[]) => Promise<string> }) {
+  const [thread, setThread] = useState<{ q: string; a: string }[]>([]);
+  const [question, setQuestion] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div className="ask-box">
+      {thread.map((t, i) => (
+        <div key={i} className="ask-turn">
+          <div className="ask-q">{t.q}</div>
+          <div className="ask-a">{t.a}</div>
+        </div>
+      ))}
+      <form
+        className="ask-form"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          const q = question.trim();
+          if (q.length < 2 || busy) return;
+          setBusy(true);
+          setError(null);
+          try {
+            const a = await ask(q, thread.slice(-4));
+            setThread((t) => [...t, { q, a }]);
+            setQuestion('');
+          } catch (err) {
+            setError((err as Error).message);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        <input
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          placeholder="Une question sur cette annonce ? (ex. ce moteur a-t-il des pannes connues ?)"
+          aria-label="Question à l’IA sur cette annonce"
+          maxLength={500}
+          disabled={busy}
+        />
+        <button type="submit" className={`action${busy ? ' is-loading' : ''}`} disabled={busy || question.trim().length < 2}>
+          {busy ? 'L’IA réfléchit…' : 'Demander'}
+        </button>
+      </form>
+      {error && (
+        <div className="small bench-error" role="alert">
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VerdictDetail({
+  ad,
+  onClose,
+  ask,
+}: {
+  ad: StoredAd;
+  onClose: () => void;
+  ask: (question: string, history: { q: string; a: string }[]) => Promise<string>;
+}) {
+  const current = verdictOf(ad);
+  const a = ad.analysis;
+  if (!current || !a) return null;
+  const v = ad.verification;
+  return (
+    <section className="detail-panel small" aria-label="Détail du verdict" onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+      <header className="detail-head">
+        <span className={`verdict v-${current.verdict}`}>
+          {VERDICT_LABEL[current.verdict]}
+          {current.verified ? ' ✓' : ''}
+        </span>
+        <strong>{current.score}/100</strong>
+        <span className="spacer" />
+        <button type="button" className="icon-toggle" title="Fermer" aria-label="Fermer le détail du verdict" onClick={onClose}>
+          ✕
+        </button>
+      </header>
+      <p className="pop-score muted">
+        {SCORE_HELP}
+        {current.verified ? ' Recalculé après la vérification France.' : ''}
+      </p>
+      <p className="pop-summary">{a.summary}</p>
+      <ul className="notes">
+        {v?.detail
+          .split('\n')
+          .filter(Boolean)
+          .map((line) => (
+            <li key={`v${line}`} className="note-info">
+              {line.replace(/^[-•]\s*/, '')}
+            </li>
+          ))}
+        {a.positives.map((x) => (
+          <li key={`p${x}`} className="note-plus">{x}</li>
+        ))}
+        {a.red_flags.map((x) => (
+          <li key={`f${x}`} className="note-flag">{x}</li>
+        ))}
+        {a.questions.map((x) => (
+          <li key={`q${x}`} className="note-ask">{x}</li>
+        ))}
+      </ul>
+      {ad.body.trim() && (
+        <>
+          <div className="pop-title">Description du vendeur</div>
+          <p className="pop-desc">{ad.body.trim()}</p>
+        </>
+      )}
+      <AskBox ask={ask} />
+    </section>
   );
 }
 
@@ -102,11 +363,18 @@ export function AdList({
   onMaxAgeDays,
   showOffTopic,
   onShowOffTopic,
+  showLbcPricey,
+  onShowLbcPricey,
+  plan,
+  curves,
+  lastCollectAt,
+  onAddListing,
+  onAsk,
 }: {
   ads: StoredAd[];
   highlighted: string | null;
   onHover: (id: string | null) => void;
-  onToggle: (adId: string, flag: 'favorite' | 'hidden', value: boolean) => void;
+  onToggle: (adId: string, flag: 'favorite' | 'hidden' | 'contacted', value: boolean) => void;
   checking: { id: string; step: string } | null;
   onCheck: (adId: string, query: Search) => void;
   onCheckSeller: (adId: string) => void;
@@ -115,30 +383,54 @@ export function AdList({
   maxAgeDays: number | null;
   onMaxAgeDays: (days: number | null) => void;
   showOffTopic: boolean;
+  showLbcPricey: boolean;
+  onShowLbcPricey: (show: boolean) => void;
   onShowOffTopic: (show: boolean) => void;
+  plan: Plan | null;
+  curves: Record<string, PriceCurve>;
+  lastCollectAt: string | null;
+  onAddListing: (url: string) => Promise<void>;
+  onAsk: (adId: string, question: string, history: { q: string; a: string }[]) => Promise<string>;
 }) {
-  const [sort, setSort] = useState<Sort>('score');
+  // Publication date by default: unlike the score, an analysis does not move a listing.
+  const [sort, setSortState] = useState<Sort>(() => {
+    try {
+      const saved = localStorage.getItem('affaires.sort');
+      return saved === 'score' || saved === 'discount' || saved === 'price' || saved === 'recent' ? saved : 'recent';
+    } catch {
+      return 'recent';
+    }
+  });
+  const setSort = (value: Sort) => {
+    setSortState(value);
+    try {
+      localStorage.setItem('affaires.sort', value);
+    } catch {
+      /* private window: not remembered */
+    }
+  };
+  /**
+   * Order frozen between explicit re-sorts: a listing whose score or price gap changes (analysis
+   * done under your eyes) keeps its place. Re-sorted only when the sort changes or listings come
+   * and go (a collection).
+   */
+  const order = useRef<{ sort: Sort; ids: string; rank: Map<string, number> } | null>(null);
+  const home = useHome();
   const [showHidden, setShowHidden] = useState(false);
   const [onlyFavorites, setOnlyFavorites] = useState(false);
+  /** Open detail panels, as "<id>:verdict" / "<id>:price". */
+  const [opened, setOpened] = useState<Set<string>>(() => new Set());
+  const isOpen = (key: string) => opened.has(key);
+  const toggleOpen = (key: string) =>
+    setOpened((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
-  const estimates = useMemo(
-    () =>
-      estimateAll(
-        ads,
-        new Map(
-          ads.map((a) => [
-            a.id,
-            {
-              // Only comparisons adjusted to the listing's year and mileage are a fair reference.
-              france: a.comparison?.adjustedTo ? { median: a.comparison.median, count: a.comparison.count } : null,
-              market: a.analysis?.market_price ?? null,
-              newPrice: a.analysis?.new_price ?? null,
-            },
-          ]),
-        ),
-      ),
-    [ads],
-  );
+  // Curve of each model (national fit after « Analyser le prix », else the plan's AI points) × the text's facts.
+  const estimates = useMemo(() => estimateAll(ads, plan, curves), [ads, plan, curves]);
 
   const shown = useMemo(() => {
     const list = ads.filter(
@@ -146,21 +438,29 @@ export function AdList({
         (showHidden || !a.hidden) &&
         (!onlyFavorites || a.favorite) &&
         (showOffTopic || !isOffTopic(a) || a.favorite) &&
+        (showLbcPricey || !isLbcPricey(a) || a.favorite) &&
         isRecent(a, maxAgeDays),
     );
-    const byScore = (a: StoredAd) => verdictOf(a)?.score ?? -1;
-    return [...list].sort((a, b) =>
-      sort === 'score'
-        ? byScore(b) - byScore(a)
-        : sort === 'discount'
-          ? (estimates.get(b.id)?.discount ?? -Infinity) - (estimates.get(a.id)?.discount ?? -Infinity)
-          : sort === 'price'
-          ? (a.price ?? Infinity) - (b.price ?? Infinity)
-          : (b.date ?? '').localeCompare(a.date ?? ''),
-    );
-  }, [ads, sort, showHidden, onlyFavorites, maxAgeDays, estimates, showOffTopic]);
+    const ids = ads.map((a) => a.id).sort().join(',');
+    if (!order.current || order.current.sort !== sort || order.current.ids !== ids) {
+      const byScore = (a: StoredAd) => verdictOf(a)?.score ?? -1;
+      const sorted = [...ads].sort((a, b) =>
+        sort === 'score'
+          ? byScore(b) - byScore(a)
+          : sort === 'discount'
+            ? (estimates.get(b.id)?.discount ?? -Infinity) - (estimates.get(a.id)?.discount ?? -Infinity)
+            : sort === 'price'
+              ? (a.price ?? Infinity) - (b.price ?? Infinity)
+              : (b.date ?? '').localeCompare(a.date ?? ''),
+      );
+      order.current = { sort, ids, rank: new Map(sorted.map((a, i) => [a.id, i])) };
+    }
+    const rank = order.current.rank;
+    return [...list].sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
+  }, [ads, sort, showHidden, onlyFavorites, maxAgeDays, estimates, showOffTopic, showLbcPricey]);
   const tooOld = ads.filter((a) => !a.hidden && !isRecent(a, maxAgeDays)).length;
   const offTopic = ads.filter((a) => !a.hidden && !a.favorite && isOffTopic(a)).length;
+  const lbcPricey = ads.filter((a) => !a.hidden && !a.favorite && !isOffTopic(a) && isLbcPricey(a)).length;
 
   if (!ads.length) {
     return (
@@ -174,6 +474,7 @@ export function AdList({
     <section className="results" aria-label="Annonces">
       <div className="row filters small">
         <strong>{shown.length} annonces</strong>
+        <AddListing onAdd={onAddListing} />
         {tooOld > 0 && (
           <button type="button" className="link small" onClick={() => onMaxAgeDays(null)}>
             {tooOld} plus anciennes cachées · tout voir
@@ -196,10 +497,10 @@ export function AdList({
         <label>
           Trier par{' '}
           <select value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
+            <option value="recent">date de publication</option>
             <option value="score">intérêt</option>
             <option value="discount">décote estimée</option>
             <option value="price">prix</option>
-            <option value="recent">date</option>
           </select>
         </label>
         <label>
@@ -213,9 +514,15 @@ export function AdList({
           <input type="checkbox" checked={showOffTopic} onChange={(e) => onShowOffTopic(e.target.checked)} /> Hors sujet
           {offTopic ? ` (${offTopic})` : ''}
         </label>
+        <label title="Annonces que Leboncoin juge au prix équitable ou plus cher ; sans verdict Leboncoin, celles que notre analyse juge « correct » ou « cher » (cachées par défaut, sauf favoris)">
+          <input type="checkbox" checked={showLbcPricey} onChange={(e) => onShowLbcPricey(e.target.checked)} /> Pas une affaire
+          {lbcPricey ? ` (${lbcPricey})` : ''}
+        </label>
       </div>
       <ul className="ads">
-        {shown.map((ad) => (
+        {shown.map((ad) => {
+          const pick = isOffTopic(ad) ? null : pickOf(plan, ad);
+          return (
           <li
             key={ad.id}
             id={`ad-${ad.id}`}
@@ -224,92 +531,97 @@ export function AdList({
             onMouseLeave={() => onHover(null)}
           >
             <div className="ad-main">
-            <a className="ad-link" href={ad.url} target="_blank" rel="noreferrer">
-              <div className="thumb">
-                {ad.image ? <img src={ad.image} alt="" loading="lazy" referrerPolicy="no-referrer" /> : null}
-                {ad.seller === 'pro' && (
-                  <span className="pro-badge" title="Annonce d’un professionnel">
-                    PRO
-                  </span>
-                )}
-              </div>
-              <div className="ad-body">
-                <div className="ad-title">{ad.title}</div>
-                <div className="ad-price">{ad.price != null ? euro.format(ad.price) : 'Prix non indiqué'}</div>
-                <div className="muted small">{facts(ad)}</div>
-                <div className="muted small">
-                  {[ad.city, ad.zipcode].filter(Boolean).join(' ')} · {ad.seller === 'pro' ? 'Pro' : 'Particulier'}
-                  {ad.date ? (
-                    <>
-                      {' · '}
-                      <span className={(ageInDays(ad.date) ?? 0) > 3 ? 'stale' : 'fresh'}>{ageLabel(ad.date)}</span>
-                    </>
-                  ) : null}
-                </div>
-                {ad.analysis && (
-                  <Clamp>
-                    <div className="verdict-row">
-                      <span className={`verdict v-${verdictOf(ad)!.verdict}`}>
-                        {VERDICT_LABEL[verdictOf(ad)!.verdict]}
-                        {verdictOf(ad)!.verified ? ' ✓' : ''}
-                      </span>
-                      {ad.sellerCheck && ad.sellerCheck.level !== 'ok' && (
-                        <span className={`seller-pill seller-${ad.sellerCheck.level}`} title={ad.sellerCheck.flags.join(' · ')}>
-                          ⚠ vendeur
+              <div className="ad-left">
+                <div className="ad-link">
+                  <div className="ad-media">
+                    <a className="thumb" href={ad.url} target="_blank" rel="noreferrer" tabIndex={-1}>
+                      {ad.image ? <img src={ad.image} alt="" loading="lazy" referrerPolicy="no-referrer" /> : null}
+                      {ad.seller === 'pro' && (
+                        <span className="pro-badge" title="Annonce d’un professionnel">
+                          PRO
                         </span>
                       )}
-                      <span className="score" title={verdictOf(ad)!.verified ? 'Score après vérification' : 'Score de la première analyse'}>
-                        {verdictOf(ad)!.score}/100
-                      </span>
+                      {lastCollectAt && ad.firstSeen >= lastCollectAt && (
+                        <span className="new-badge" title="Nouvelle depuis le dernier « Récupérer les annonces »">
+                          Nouveau
+                        </span>
+                      )}
+                    </a>
+                    <Specs ad={ad} pick={pick} />
+                  </div>
+                  <div className="ad-body">
+                    <div className="ad-head">
+                      {/* The shortlist choice names the car better than the seller's title (kept on hover). */}
+                      <a className="ad-title" href={ad.url} target="_blank" rel="noreferrer" title={`Annonce : ${ad.title}`}>
+                        {pick?.name ?? ad.title}
+                      </a>
+                      {(ad.city || ad.zipcode) && (
+                        <a
+                          className="ad-place"
+                          href={routeUrl(home, ad)}
+                          target="_blank"
+                          rel="noreferrer"
+                          title={home ? `Itinéraire depuis « ${home} » (Google Maps)` : 'Itinéraire Google Maps (indique ton domicile en haut pour partir de chez toi)'}
+                        >
+                          <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" />
+                            <circle cx="12" cy="9.5" r="2.5" />
+                          </svg>
+                          <span className="ad-place-text">{[ad.city, ad.zipcode].filter(Boolean).join(' ')}</span>
+                        </a>
+                      )}
                     </div>
-                    <p className="summary small">{ad.analysis.summary}</p>
-                    <ul className="notes small">
-                      {ad.analysis.positives.map((x) => (
-                        <li key={`p${x}`} className="note-plus">{x}</li>
-                      ))}
-                      {ad.analysis.red_flags.map((x) => (
-                        <li key={`f${x}`} className="note-flag">{x}</li>
-                      ))}
-                      {ad.analysis.questions.map((x) => (
-                        <li key={`q${x}`} className="note-ask">{x}</li>
-                      ))}
-                    </ul>
-                  </Clamp>
-                )}
+                    <div className="seller-actions">
+                      <SellerLine
+                        ad={ad}
+                        flagged={(estimates.get(ad.id)?.discount ?? 0) >= SELLER_CHECK_DISCOUNT || verdictOf(ad)?.verdict === 'suspect'}
+                        busy={checking?.id === ad.id && /vendeur/i.test(checking.step)}
+                        locked={checking != null}
+                        onCheck={() => onCheckSeller(ad.id)}
+                      />
+                      <CopyMessage ad={ad} onContacted={() => onToggle(ad.id, 'contacted', true)} />
+                    </div>
+                    <ModelInfo ad={ad} pick={pick} />
+                  </div>
+                </div>
               </div>
-            </a>
-            <Benchmarks
-              ad={ad}
-              estimate={estimates.get(ad.id) ?? null}
-              category={categoryOf(ad)}
-              busy={checking?.id === ad.id ? checking.step : null}
-              locked={checking != null}
-              onCheck={(query) => onCheck(ad.id, query)}
-              onCheckSeller={() => onCheckSeller(ad.id)}
-              error={adErrors[ad.id] ?? null}
-            />
-            </div>
-            <div className="ad-actions">
-              <CopyMessage ad={ad} />
-              <label title="Favori">
-                <input
-                  type="checkbox"
-                  checked={ad.favorite}
-                  onChange={(e) => onToggle(ad.id, 'favorite', e.target.checked)}
-                />{' '}
-                ★ Favori
-              </label>
-              <label title="Masquer">
-                <input
-                  type="checkbox"
-                  checked={ad.hidden}
-                  onChange={(e) => onToggle(ad.id, 'hidden', e.target.checked)}
-                />{' '}
-                Masquer
-              </label>
+              <div className="ad-verdict">
+                <VerdictFoot ad={ad} open={isOpen(`${ad.id}:verdict`)} onToggle={() => toggleOpen(`${ad.id}:verdict`)} />
+              </div>
+              <Benchmarks
+                ad={ad}
+                estimate={estimates.get(ad.id) ?? null}
+                category={categoryOf(ad)}
+                busy={checking?.id === ad.id ? checking.step : null}
+                locked={checking != null}
+                onCheck={(query) => onCheck(ad.id, query)}
+                error={adErrors[ad.id] ?? null}
+                onToggle={(flag, value) => onToggle(ad.id, flag, value)}
+                detailOpen={isOpen(`${ad.id}:price`)}
+                onToggleDetail={() => toggleOpen(`${ad.id}:price`)}
+              />
+              {(isOpen(`${ad.id}:verdict`) || isOpen(`${ad.id}:price`)) && (
+                <div className="ad-details">
+                  {isOpen(`${ad.id}:verdict`) && (
+                    <VerdictDetail ad={ad} onClose={() => toggleOpen(`${ad.id}:verdict`)} ask={(q, history) => onAsk(ad.id, q, history)} />
+                  )}
+                  {isOpen(`${ad.id}:price`) && (
+                    <PriceDetail
+                      ad={ad}
+                      estimate={estimates.get(ad.id) ?? null}
+                      category={categoryOf(ad)}
+                      busy={checking?.id === ad.id ? checking.step : null}
+                      locked={checking != null}
+                      onCheck={(query) => onCheck(ad.id, query)}
+                      onClose={() => toggleOpen(`${ad.id}:price`)}
+                    />
+                  )}
+                </div>
+              )}
             </div>
           </li>
-        ))}
+          );
+        })}
       </ul>
     </section>
   );

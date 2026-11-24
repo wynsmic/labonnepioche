@@ -49,12 +49,12 @@ export function claudeLlm(env: Env): Llm {
 
     async structured<S extends z.ZodType>(
       schema: S,
-      params: { system: string; context?: string; user: string; effort: 'low' | 'medium' | 'high' },
+      params: { system: string; context?: string; user: string; effort: 'low' | 'medium' | 'high'; small?: boolean },
     ): Promise<z.infer<S>> {
       const system: Anthropic.Beta.BetaTextBlockParam[] = [{ type: 'text', text: params.system }];
       if (params.context) system.push({ type: 'text', text: params.context, cache_control: { type: 'ephemeral' } });
       const response = await client().beta.messages.parse({
-        model: env.CLAUDE_MODEL,
+        model: params.small ? (env.CLAUDE_SMALL_MODEL ?? 'claude-haiku-5-5') : env.CLAUDE_MODEL,
         max_tokens: 16000,
         betas: [FALLBACK_BETA],
         fallbacks: 'default',

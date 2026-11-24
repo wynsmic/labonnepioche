@@ -1,50 +1,49 @@
 import { describe, expect, it } from 'vitest';
-import { estimateAll } from '../src/shared/estimate';
+import { curveKey, estimateOf } from '../src/shared/estimate';
+import type { Facts } from '../src/shared/facts';
+import { predict, type PriceCurve } from '../src/shared/pricing';
 import type { Ad } from '../src/shared/types';
 
-const ad = (id: string, price: number, regdate: string, mileage: string, body = ''): Ad => ({
-  id, url: '', title: 'Dacia Duster', body, price, date: null, city: null, zipcode: null, lat: null, lng: null,
+const now = Date.UTC(2026, 10, 23);
+const ad = (price: number, regdate: string, mileage: string): Ad => ({
+  id: 'x', url: '', title: 'Dacia Duster', body: '', price, date: null, city: null, zipcode: null, lat: null, lng: null,
   image: null, seller: 'private', attributes: { brand: 'Dacia', model: 'Duster', fuel: 'Diesel', regdate, mileage },
 });
+const curve: PriceCurve = { c: Math.log(24_000), alpha: 0.36, beta: 0.25, spread: 0.1, source: 'marche', n: 60, slopes: 'donnees', years: [2016, 2024] };
+const facts = (over: Partial<Facts>): Facts => ({
+  id: 'x', accident: 'aucun', owners: 1, mileage_doubt: false, condition: 'bon', repairs: [], cosmetic: [], maintenance: 'complet',
+  ct: 'ok', equipment: 'courant', adjust_pct: 0, adjust_reason: '', ...over,
+});
 
-describe('estimateAll', () => {
-  const peers = [1, 2, 3, 4, 5].map((i) => ad(`p${i}`, 12000, '2020', '80 000 km'));
-
-  it('is 0 % for a listing priced like its identical peers', () => {
-    const e = estimateAll([...peers, ad('x', 12000, '2020', '80 000 km')], new Map(), 2026).get('x')!;
-    expect(e.basis).toBe('annonces');
-    expect(e.discount).toBe(0);
+describe('estimateOf', () => {
+  it('reads the expected price on the model curve, with a range', () => {
+    const typical = predict(curve, 6.4, 80_000);
+    const e = estimateOf(ad(Math.round(typical), '2020', '80 000 km'), { curve, facts: null, aiMarket: null }, now)!;
+    expect(e.basis).toBe('marche');
+    expect(e.peers).toBe(60);
+    expect(Math.abs(e.discount)).toBeLessThanOrEqual(1);
+    expect(e.low).toBeLessThan(e.expected);
+    expect(e.high).toBeGreaterThan(e.expected);
   });
 
-  it('expects more for a newer, less driven, better kept car', () => {
-    const e = estimateAll([...peers, ad('x', 12000, '2022', '40 000 km', 'première main, carnet d entretien')], new Map(), 2026).get('x')!;
-    expect(e.expected).toBeGreaterThan(15000);
-    expect(e.discount).toBeGreaterThan(20);
-    expect(e.factors.join(' ')).toContain('première main');
+  it('applies the accident rule and the AI reading of the text', () => {
+    const base = estimateOf(ad(10_000, '2020', '80 000 km'), { curve, facts: null, aiMarket: null }, now)!;
+    const hit = estimateOf(ad(10_000, '2020', '80 000 km'), { curve, facts: facts({ accident: 'lourd', adjust_pct: -10, adjust_reason: 'embrayage à prévoir' }), aiMarket: null }, now)!;
+    expect(hit.expected / base.expected).toBeCloseTo(0.7 * 0.9, 2);
+    expect(hit.factors.join(' ')).toContain('embrayage à prévoir');
   });
 
-  it('falls back to the AI market price with too few peers', () => {
-    const e = estimateAll([ad('x', 9000, '2020', '80 000 km')], new Map([['x', { france: null, market: 10000, newPrice: null }]]), 2026).get('x')!;
-    expect(e).toMatchObject({ basis: 'ia', discount: 10 });
+  it('caps the AI adjustment', () => {
+    const base = estimateOf(ad(10_000, '2020', '80 000 km'), { curve, facts: null, aiMarket: null }, now)!;
+    const wild = estimateOf(ad(10_000, '2020', '80 000 km'), { curve, facts: facts({ adjust_pct: 60 }), aiMarket: null }, now)!;
+    expect(wild.expected / base.expected).toBeCloseTo(1.12, 2);
   });
 
-  it('prefers the AI market price to the new price', () => {
-    const e = estimateAll([ad('x', 9000, '2020', '80 000 km')], new Map([['x', { france: null, market: 10000, newPrice: 25000 }]]), 2026).get('x')!;
-    expect(e.basis).toBe('ia');
+  it('falls back to the AI price of the listing without a curve', () => {
+    expect(estimateOf(ad(9_000, '2020', '80 000 km'), { curve: null, facts: null, aiMarket: 10_000 }, now)).toMatchObject({ basis: 'annonce', discount: 10 });
   });
+});
 
-  it('uses the national comparison over everything else', () => {
-    const all = [...peers, ad('x', 12000, '2020', '80 000 km')];
-    const e = estimateAll(all, new Map([['x', { france: { median: 15000, count: 8 }, market: 10000, newPrice: 25000 }]]), 2026).get('x')!;
-    expect(e).toMatchObject({ basis: 'france', discount: 20 });
-  });
-
-  it('from the new price, corrects only the mileage gap to normal', () => {
-    // 6.5 years at 13 000 km/year = 84 500 km: 80 000 km is about normal.
-    const e = estimateAll([ad('x', 9000, '2020', '80 000 km')], new Map([['x', { france: null, market: null, newPrice: 25000 }]]), 2026).get('x')!;
-    expect(e.basis).toBe('neuf');
-    // 25 000 × 0.9 × 0.9^6.5 × e^(+0.011) ≈ 11 470
-    expect(e.expected).toBeGreaterThan(11300);
-    expect(e.expected).toBeLessThan(11600);
-  });
+it('keys one curve per make, model and fuel', () => {
+  expect(curveKey(ad(1, '2020', '1 km'))).toBe('dacia|duster|diesel');
 });

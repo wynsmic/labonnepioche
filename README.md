@@ -9,12 +9,34 @@ Trouve les bonnes affaires sur Leboncoin avec une IA (GPT par défaut, ou Claude
    envoie à l'outil. Les annonces hors critères ou qui contiennent un mot disqualifiant (« pour pièces »…)
    sont écartées. La liste devient ce que Leboncoin montre maintenant : les anciennes annonces non revues
    partent (sauf les favoris), celles revues à l'identique gardent leur analyse.
-3. **Analyser** : l’IA note chaque annonce (0–100, verdict, prix de marché), la résume, liste les signaux
-   d'alerte et les questions à poser.
-Chaque version de la demande est gardée ; un nouveau plan remet toutes les annonces à analyser.
+   Les pages de résultats ne contiennent pas la description : l'extension ouvre ensuite chaque annonce
+   gardée (une seule fois, mise en banque 15 jours) pour lire le texte du vendeur. Un petit modèle en tire
+   des faits (accident, propriétaires, réparations à prévoir, état, entretien, kilométrage douteux…).
+3. **Analyser** : l’IA note chaque annonce (0–100, verdict), la résume, liste les signaux d'alerte et les
+   questions à poser, à partir de son prix attendu (voir plus bas).
+Chaque version de la demande est gardée ; une analyse reste valable 15 jours pour la même demande.
 4. **Vendeurs des affaires frappantes** : pour toute annonce à plus de 15 % sous le marché, l'extension lit le
    profil public du vendeur (ancienneté, nombre d'annonces, autres véhicules en vente) ; un compte tout neuf
-   ou une activité de revente est signalé (« ⚠ vendeur ») et pris en compte par « Vérifier ».
+   ou une activité de revente est signalé (« ⚠ vendeur ») et pris en compte par « Analyser le prix ».
+
+## Prix attendu : une courbe par modèle
+
+`ln(prix) = c − α·ln(1 + âge) − β·(ln(1 + km/10 000) − ln(1 + 13 000·âge/10 000))` (`src/shared/pricing.ts`)
+
+- **Âge en loi de puissance** : décote forte au début puis ralentie. α = 0,36 reproduit les repères du marché
+  français (≈ −22 % la 1re année, −14 % la 2e, −10 % la 3e… ≈ −3 % vers 10 ans).
+- **Kilométrage en écart au kilométrage normal pour l'âge** (13 000 km/an), en logarithme (effet décroissant),
+  comme dans les études hédoniques des annonces européennes. β = 0,25 : −13 % à 120 000 km au lieu de 65 000
+  pour une voiture de 5 ans.
+- **Avant « Analyser le prix »** : la courbe vient des prix de marché que l'IA donne pour chaque modèle au plan.
+- **Après** : la recherche France du modèle (±4 ans, tous kilométrages, 3 pages) est lue une fois (banque
+  15 jours, partagée entre toutes les recherches), puis la courbe est ajustée sur ces annonces : régression
+  robuste (Huber), pentes tirées vers la loi de départ et libérées seulement avec au moins 25 annonces sur
+  4 années, bornées ; épaves et kilométrages douteux exclus. Elle sert ensuite à toutes les annonces du modèle.
+- **Le texte de l'annonce** corrige le prix : accident léger −10 %, grave −30 % (fourchettes des experts :
+  −5 à −15 %, −25 à −40 %), puis l'effet de l'état, des options, réparations, entretien et propriétaires lu par
+  l'IA (borné entre −35 et +12 %).
+- **Fourchette** : la moitié centrale du marché autour de la courbe (dispersion mesurée des annonces).
 
 La liste ressemble à Leboncoin, un clic ouvre l'annonce sur Leboncoin, et la carte situe les annonces (les
 annonces masquées disparaissent de la carte, les favoris sont cerclés de jaune).

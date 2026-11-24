@@ -46,3 +46,27 @@ export function readProfile(url: string): Promise<ProfileResult> {
 export function readOwner(url: string): Promise<{ ok: true; sellerId: string } | { ok: false; reason: string }> {
   return send({ type: 'owner', url });
 }
+
+export type DetailResult =
+  | {
+      ok: true;
+      id: string;
+      body: string;
+      price: number | null;
+      sellerId: string | null;
+      sellerName: string | null;
+      attributes: Record<string, string>;
+      /** The whole listing (extension 0.5.2+). */
+      ad?: Ad;
+    }
+  | { ok: false; reason: string };
+
+/** Opens a Leboncoin listing in a background tab of this browser and reads its full text and seller. */
+export function readDetail(url: string): Promise<DetailResult> {
+  return send<DetailResult>({ type: 'detail', url });
+}
+
+/** Opens Leboncoin's message form to the seller in a new tab of this browser and types the message in it. */
+export function composeMessage(url: string, text: string): Promise<{ ok: true; filled: boolean } | { ok: false; reason: string }> {
+  return send({ type: 'compose', url, text });
+}

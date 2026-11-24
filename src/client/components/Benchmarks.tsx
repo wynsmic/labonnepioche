@@ -1,16 +1,22 @@
 import { useState } from 'react';
 import { buildSearchUrl } from '../../shared/leboncoin';
-import { comparableQuery, numberFrom } from '../../shared/compare';
+import { ageInDays, comparableQuery, numberFrom } from '../../shared/compare';
 import { verdictOf, type Search, type StoredAd } from '../../shared/types';
 import type { Estimate } from '../../shared/estimate';
-import { describeCurve } from '../../shared/depreciation';
-import { SELLER_CHECK_DISCOUNT } from '../../shared/seller';
+import { describeCurve } from '../../shared/pricing';
+import { DetailToggle } from './DetailToggle';
 
 const euro = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
 const int = new Intl.NumberFormat('fr-FR');
 
 function pct(value: number, reference: number): number {
   return Math.round(((value - reference) / reference) * 100);
+}
+
+/** "il y a 3 h" / "il y a 2 j" for the listing's publication. */
+function publishedAgo(date: string): string {
+  const days = ageInDays(date) ?? 0;
+  return days < 1 ? `il y a ${Math.max(1, Math.round(days * 24))} h` : `il y a ${Math.floor(days)} j`;
 }
 
 /** "il y a 5 h" / "il y a 2 j" for the reuse of national listings. */
@@ -108,11 +114,62 @@ function Diff({ price, value }: { price: number | null; value: number }) {
   return <span className={d <= -10 ? 'good' : d > 0 ? 'bad' : 'muted'}>{d > 0 ? `+${d}` : d} %</span>;
 }
 
+/** Leboncoin's own price verdict and range, as shown on the listing, for comparison. */
+function LbcVerdict({ attributes }: { attributes: Record<string, string> }) {
+  const label = attributes.car_price_positioning;
+  const min = Number(attributes.car_price_min) || null;
+  const max = Number(attributes.car_price_max) || null;
+  if (!label && !(min && max)) return null;
+  const tone = /tr[eè]s bonne|bonne affaire/i.test(label ?? '')
+    ? 'good'
+    : /l[eé]g[eè]rement/i.test(label ?? '')
+      ? 'meh'
+      : /au-dessus/i.test(label ?? '')
+        ? 'bad'
+        : /indisponible/i.test(label ?? '')
+          ? 'none'
+          : 'fair';
+  return (
+    <div className={`lbc-verdict lbc-${tone}`} title="Verdict de prix affiché par Leboncoin sur l’annonce, avec sa fourchette d’estimation">
+      <span className="lbc-badge" aria-label="Leboncoin">
+        lbc
+      </span>
+      <span className="lbc-label">{label ?? 'Estimation'}</span>
+      {min && max && (
+        <span className="lbc-range">
+          {euro.format(min)} – {euro.format(max)}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Colour of the price gap. A big discount on a suspect listing is not good news: no green then. */
+function toneOf(ad: StoredAd, estimate: Estimate | null): string {
+  if (!estimate) return 'tone-none';
+  if (verdictOf(ad)?.verdict === 'suspect') return 'tone-warn';
+  return estimate.discount >= 10 ? 'tone-good' : estimate.discount < 0 ? 'tone-bad' : 'tone-neutral';
+}
+
+/** The reference recalled next to the gap ("(42)") and its one-line explanation. */
+const REFERENCE: Record<Estimate['basis'], (e: Estimate) => { short: string; tip: string }> = {
+  marche: (e) => ({
+    short: `(${e.peers})`,
+    tip: `Courbe de prix du modèle ajustée sur ${e.peers} annonces en France, à l’âge et au kilométrage de celle-ci, corrigée de ce que dit son texte`,
+  }),
+  local: (e) => ({
+    short: `(~${e.peers})`,
+    tip: `Niveau mesuré sur ${e.peers} annonces du modèle déjà collectées (ta zone), forme de courbe de l’IA : lance « Analyser le prix » pour le marché France`,
+  }),
+  ia: () => ({ short: '(IA)', tip: 'Courbe de prix pressentie par l’IA pour ce modèle : lance « Analyser le prix » pour la caler sur le marché France' }),
+  annonce: () => ({ short: '(IA)', tip: 'Prix estimé par l’IA pour cette annonce, sans courbe du modèle : lance « Analyser le prix »' }),
+};
+
 const BASIS_LABEL: Record<Estimate['basis'], (e: Estimate) => string> = {
-  france: (e) => `médiane France · ${e.peers} annonces`,
-  annonces: (e) => `${e.peers} annonces du même modèle`,
-  ia: () => 'estimation IA',
-  neuf: () => 'depuis le prix neuf (grossier)',
+  marche: (e) => `Marché France · courbe sur ${e.peers} annonces`,
+  local: (e) => `Annonces collectées · niveau sur ${e.peers} annonces`,
+  ia: () => 'Courbe pressentie par l’IA (avant analyse France)',
+  annonce: () => 'Estimation IA de l’annonce',
 };
 
 /**
@@ -126,8 +183,10 @@ export function Benchmarks({
   busy,
   locked,
   onCheck,
-  onCheckSeller,
   error,
+  onToggle,
+  detailOpen,
+  onToggleDetail,
 }: {
   ad: StoredAd;
   /** Market reference of the listing (best source available). */
@@ -138,221 +197,302 @@ export function Benchmarks({
   /** Another check is running. */
   locked: boolean;
   onCheck: (query: Search) => void;
-  onCheckSeller: () => void;
   /** Why the last check of this listing failed. */
   error: string | null;
+  onToggle: (flag: 'favorite' | 'hidden', value: boolean) => void;
+  detailOpen: boolean;
+  onToggleDetail: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const c = ad.comparison;
   const v = ad.verification;
-  const sc = ad.sellerCheck;
   const price = ad.price;
   const mileage = numberFrom(ad.attributes.mileage);
   const year = numberFrom(ad.attributes.regdate);
   const drop = ad.firstPrice != null && price != null && ad.firstPrice > price ? ad.firstPrice - price : 0;
   const ai = ad.analysis?.market_price ?? null;
   // Comparisons saved before required_groups existed lack it.
-  const query = c?.query ? { ...c.query, required_groups: c.query.required_groups ?? [] } : comparableQuery(ad, category);
+  // Queries of older comparisons (no `pick`) were narrow (±1 year, ±30 % km): the wide curve search replaces them.
+  const query = c?.query && c.query.pick !== undefined ? { ...c.query, required_groups: c.query.required_groups ?? [] } : comparableQuery(ad, category);
   const motor = c?.match === 'motorisation' ? ' même moteur' : '';
-  const striking = (estimate?.discount ?? 0) >= SELLER_CHECK_DISCOUNT;
+
+  // A big discount on a suspect listing is not good news: no green then.
+  const tone = toneOf(ad, estimate);
+  const reference = estimate ? REFERENCE[estimate.basis](estimate) : null;
+  const hasDetail = price != null && (estimate != null || c != null || ai != null);
+
+  const settings = (
+    <button
+      type="button"
+      className="icon-toggle"
+      disabled={locked}
+      onClick={() => setEditing(!editing)}
+      title="Régler la recherche de comparables (mots-clés, années, km) avant de vérifier"
+      aria-label="Régler la recherche de comparables"
+      aria-expanded={editing}
+    >
+      ⚙
+    </button>
+  );
+  const form = editing && !busy && (
+    <CompareForm
+      initial={query}
+      busy={false}
+      onRun={(q) => {
+        setEditing(false);
+        onCheck(q);
+      }}
+      onCancel={() => setEditing(false)}
+    />
+  );
 
   return (
-    <aside className="bench" aria-label="Prix et vérification">
-      <div className="row bench-head">
-        <strong className="small">Prix</strong>
-        <span className="spacer" />
-        {!busy && (
-          <button type="button" className="ghost small" disabled={locked} onClick={() => setEditing(!editing)} title="Régler la recherche de comparables">
-            ⚙
-          </button>
-        )}
-      </div>
-
-      {estimate ? (
-        <div className="has-tip" tabIndex={0}>
-          {/* A big discount on a suspect listing is not good news: no green then. */}
-          <div
-            className={`target ${
-              verdictOf(ad)?.verdict === 'suspect' ? 'warn-text' : estimate.discount >= 10 ? 'good' : estimate.discount < 0 ? 'bad' : ''
-            }`}
-          >
-            {estimate.discount > 0 ? '−' : '+'}
-            {Math.abs(estimate.discount)} %
-            <span className="target-label"> {estimate.discount > 0 ? 'sous le marché' : 'au-dessus du marché'}</span>
-          </div>
-          <div className="small muted">
-            {BASIS_LABEL[estimate.basis](estimate)}
-            {estimate.basis === 'france' ? motor : ''}
-            {estimate.basis === 'france' && v?.searchedAt ? ` · lues ${readAgo(v.searchedAt)}` : ''}
-          </div>
-          <span className="tip small" role="tooltip">
-            {estimate.factors.map((f) => (
-              <span key={f} className="tip-line">
-                {f}
-              </span>
-            ))}
-          </span>
-        </div>
-      ) : (
-        <div className="small muted">Marché inconnu : lance l’analyse ou « Vérifier »</div>
-      )}
-
-      {error && !busy && (
-        <div className="small bench-error" role="alert">
-          {error}
-        </div>
-      )}
-
-      {busy ? (
-        <div className="small muted busy-line">{busy}</div>
-      ) : (
-        v && (
-          <div className="check-cause has-tip small" tabIndex={0}>
-            Pourquoi : {v.cause}
-            <span className="tip" role="tooltip">
-              {v.detail.split('\n').filter(Boolean).map((line) => (
-                <span key={line} className="tip-line">
-                  • {line.replace(/^[-•]\s*/, '')}
-                </span>
-              ))}
+    <>
+      <aside className="bench" aria-label="Prix">
+        <div className="bench-head">
+          {ad.date ? (
+            <span className={`bench-date ${(ageInDays(ad.date) ?? 0) > 3 ? 'stale' : 'fresh'}`} title={new Date(ad.date).toLocaleString('fr-FR')}>
+              Publiée {publishedAgo(ad.date)}
             </span>
-          </div>
-        )
-      )}
-
-      {sc ? (
-        <div className={`small has-tip seller seller-${sc.level}`} tabIndex={0}>
-          {sc.level === 'ok' ? '✓' : '⚠'} Vendeur {sc.memberSince ? `depuis ${sc.memberSince}` : ''}
-          {sc.totalAds != null ? ` · ${sc.totalAds} annonce${sc.totalAds > 1 ? 's' : ''}` : ''}{' '}
-          <a href={sc.profileUrl} target="_blank" rel="noreferrer">
-            profil ↗
-          </a>
-          <span className="tip" role="tooltip">
-            {(sc.flags.length ? sc.flags : ['Rien d’anormal : compte ancien, pas de revente apparente']).map((f) => (
-              <span key={f} className="tip-line">
-                • {f}
-              </span>
-            ))}
-            {sc.badges.length > 0 && <span className="tip-line">• {sc.badges.join(', ')}</span>}
-          </span>
+          ) : (
+            <span className="bench-date muted">Date inconnue</span>
+          )}
+          <span className="spacer" />
+          <button
+            type="button"
+            className={`icon-toggle${ad.favorite ? ' on fav' : ''}`}
+            aria-pressed={ad.favorite}
+            title={ad.favorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+            onClick={() => onToggle('favorite', !ad.favorite)}
+          >
+            {ad.favorite ? '★' : '☆'}
+          </button>
+          <button
+            type="button"
+            className={`icon-toggle${ad.hidden ? ' on' : ''}`}
+            aria-pressed={ad.hidden}
+            title={ad.hidden ? 'Réafficher l’annonce' : 'Masquer l’annonce'}
+            onClick={() => onToggle('hidden', !ad.hidden)}
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+              <circle cx="12" cy="12" r="3" />
+              {!ad.hidden && <path d="M4 20 20 4" />}
+            </svg>
+          </button>
         </div>
-      ) : (
-        (striking || verdictOf(ad)?.verdict === 'suspect') &&
-        !busy && <div className="small seller-attention">⚠ Vendeur non vérifié</div>
-      )}
 
-      {drop > 0 && <div className="small good">Baisse de {euro.format(drop)} depuis la 1re lecture</div>}
+        <div className="bench-price">{price != null ? euro.format(price) : 'Prix non indiqué'}</div>
+        {drop > 0 && <div className="bench-drop">↓ {euro.format(drop)} depuis la 1re lecture</div>}
+        <LbcVerdict attributes={ad.attributes} />
 
-      {editing && !busy ? (
-        <CompareForm
-          initial={query}
-          busy={false}
-          onRun={(q) => {
-            setEditing(false);
-            onCheck(q);
-          }}
-          onCancel={() => setEditing(false)}
-        />
-      ) : (
-        !busy && (
-          <div className="row small bench-actions">
+        {error && !busy && (
+          <div className="small bench-error" role="alert">
+            {error}
+          </div>
+        )}
+        {busy && (
+          <div className="bench-cta">
+            <button type="button" className="action primary-action is-loading" aria-busy disabled>
+              {busy}
+            </button>
+          </div>
+        )}
+
+        {/* Right under the price: the analysis as the next step, or to run again once done. */}
+        {!busy && (
+          <div className="bench-cta">
             {v ? (
-              <button type="button" className="action" disabled={locked} onClick={() => onCheck(query)}>
-                ↻ Revérifier
+              <button type="button" className="action" disabled={locked} onClick={() => onCheck(query)} title="Relire les annonces comparables et refaire l’analyse du prix">
+                ↻ Réanalyser le prix
               </button>
             ) : (
               <button type="button" className="action primary-action" disabled={locked || price == null} onClick={() => onCheck(query)}>
-                Vérifier le prix
+                Analyser le prix
               </button>
             )}
-            {!sc && (
-              <button type="button" className="action" disabled={locked} onClick={onCheckSeller}>
-                Vérifier le vendeur
-              </button>
-            )}
+            {settings}
           </div>
-        )
-      )}
+        )}
+        {form}
+      </aside>
 
-      {price != null && (c || ai != null || (estimate && estimate.basis !== 'france')) && !busy && (
-        <details className="small check-market">
-          <summary>Détail du prix</summary>
-          <table className="sources">
-            <tbody>
-              {c && (
-                <tr>
-                  <th>France</th>
-                  <td>
-                    {euro.format(c.median)} <Diff price={price} value={c.median} />{' '}
-                    <span className="muted">
-                      ({c.count}
-                      {motor})
-                    </span>
-                  </td>
-                </tr>
-              )}
-              {estimate && (estimate.basis === 'annonces' || estimate.basis === 'neuf') && (
-                <tr>
-                  <th>Règles</th>
-                  <td>
-                    {euro.format(Math.round(estimate.expected / 50) * 50)} <Diff price={price} value={estimate.expected} />
-                  </td>
-                </tr>
-              )}
-              {ai != null && (
-                <tr>
-                  <th>IA</th>
-                  <td>
-                    {euro.format(ai)} <Diff price={price} value={ai} />
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-          {c && (
-            <>
-              {c.adjustedTo && c.curve && (
-                <div className="has-tip muted" tabIndex={0}>
-                  Prix ramenés à{' '}
-                  {[c.adjustedTo.year, c.adjustedTo.km != null ? `${int.format(c.adjustedTo.km)} km` : null].filter(Boolean).join(' et ')} ⓘ
-                  <span className="tip" role="tooltip">
-                    Chaque annonce comparée est corrigée de son écart d’année et de kilométrage avec celle-ci. Loi de décote :{' '}
-                    {describeCurve(c.curve)}.
+      <div className="bench-foot">
+        <div className={`verdict-wrap price-wrap${detailOpen ? ' is-open' : ''}`}>
+          <div className="verdict-foot">
+            {estimate ? (
+              <>
+                <span className={`gap-badge ${tone}`}>
+                  {estimate.discount > 0 ? '−' : '+'}
+                  {Math.abs(estimate.discount)} %
+                </span>
+                <span className="verdict-comment">
+                  vs marché{' '}
+                  <span className="peers" title={reference!.tip}>
+                    {reference!.short}
                   </span>
-                </div>
+                </span>
+              </>
+            ) : (
+              <span className="verdict-comment muted">Marché inconnu</span>
+            )}
+            {hasDetail && <DetailToggle open={detailOpen} onClick={onToggleDetail} label="le calcul du prix" />}
+          </div>
+
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** How the price gap was reached: reference, sources, comparables; re-check from here. */
+export function PriceDetail({
+  ad,
+  estimate,
+  category,
+  busy,
+  locked,
+  onCheck,
+  onClose,
+}: {
+  ad: StoredAd;
+  estimate: Estimate | null;
+  category: number;
+  busy: string | null;
+  locked: boolean;
+  onCheck: (query: Search) => void;
+  onClose: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const c = ad.comparison;
+  const v = ad.verification;
+  const price = ad.price;
+  const mileage = numberFrom(ad.attributes.mileage);
+  const year = numberFrom(ad.attributes.regdate);
+  const ai = ad.analysis?.market_price ?? null;
+  // Queries of older comparisons (no `pick`) were narrow (±1 year, ±30 % km): the wide curve search replaces them.
+  const query = c?.query && c.query.pick !== undefined ? { ...c.query, required_groups: c.query.required_groups ?? [] } : comparableQuery(ad, category);
+  const motor = c?.match === 'motorisation' ? ' même moteur' : '';
+  const settings = (
+    <button
+      type="button"
+      className="icon-toggle"
+      disabled={locked}
+      onClick={() => setEditing(!editing)}
+      title="Régler la recherche de comparables (mots-clés, années, km) avant de vérifier"
+      aria-label="Régler la recherche de comparables"
+      aria-expanded={editing}
+    >
+      ⚙
+    </button>
+  );
+  const form = editing && !busy && (
+    <CompareForm
+      initial={query}
+      busy={false}
+      onRun={(q) => {
+        setEditing(false);
+        onCheck(q);
+      }}
+      onCancel={() => setEditing(false)}
+    />
+  );
+  return (
+    <section className="detail-panel small" aria-label="Calcul du prix" onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+              <header className="detail-head">
+                {estimate && (
+                  <span className={`gap-badge ${toneOf(ad, estimate)}`}>
+                    {estimate.discount > 0 ? '−' : '+'}
+                    {Math.abs(estimate.discount)} %
+                  </span>
+                )}
+                <strong>Calcul du prix</strong>
+                <span className="spacer" />
+                <button type="button" className="icon-toggle" title="Fermer" aria-label="Fermer le calcul du prix" onClick={onClose}>
+                  ✕
+                </button>
+              </header>
+              {estimate && (
+                <>
+                  <div className="pop-title">
+                    {BASIS_LABEL[estimate.basis](estimate)}
+                    {estimate.basis === 'marche' ? motor : ''}
+                    {estimate.basis === 'marche' && v?.searchedAt ? ` · lues ${readAgo(v.searchedAt)}` : ''}
+                  </div>
+                  <ul className="notes">
+                    {estimate.factors.map((f) => (
+                      <li key={f} className="note-info">
+                        {f}
+                      </li>
+                    ))}
+                  </ul>
+                </>
               )}
-              <Strip prices={c.prices} price={price} median={c.median} />
-              <div className="muted">
-                Habituel {euro.format(c.p25)}–{euro.format(c.p75)} · moins cher que {c.cheaperThan} %
-              </div>
-              {mileage != null && c.medianMileage != null && (
-                <div className={mileage <= c.medianMileage ? 'good' : 'bad'}>
-                  {int.format(mileage)} km vs {int.format(c.medianMileage)} km médian
-                </div>
+              <table className="sources">
+                <tbody>
+                  {estimate && (
+                    <tr>
+                      <th>Attendu</th>
+                      <td>
+                        {euro.format(Math.round(estimate.expected / 50) * 50)} <Diff price={price} value={estimate.expected} />{' '}
+                        <span className="muted">
+                          ({euro.format(Math.round(estimate.low / 50) * 50)} – {euro.format(Math.round(estimate.high / 50) * 50)})
+                        </span>
+                      </td>
+                    </tr>
+                  )}
+                  {ai != null && (
+                    <tr>
+                      <th>IA</th>
+                      <td>
+                        {euro.format(ai)} <Diff price={price} value={ai} />
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+              {c && price != null && (
+                <>
+                  {c.adjustedTo && c.curve && (
+                    <div className="has-tip muted" tabIndex={0}>
+                      Prix ramenés à{' '}
+                      {[c.adjustedTo.year, c.adjustedTo.km != null ? `${int.format(c.adjustedTo.km)} km` : null].filter(Boolean).join(' et ')} ⓘ
+                      <span className="tip" role="tooltip">
+                        Chaque annonce comparée est ramenée à l’âge et au kilométrage de celle-ci le long de la courbe du modèle :{' '}
+                        {'alpha' in c.curve ? describeCurve(c.curve) : 'ancienne loi de décote'}.
+                      </span>
+                    </div>
+                  )}
+                  <Strip prices={c.prices} price={price} median={c.median} />
+                  <div className="muted">
+                    Moitié du marché entre {euro.format(c.p25)} et {euro.format(c.p75)} pour un exemplaire courant · moins cher que {c.cheaperThan} % des annonces proches
+                  </div>
+                  {mileage != null && c.medianMileage != null && (
+                    <div className={mileage <= c.medianMileage ? 'good' : 'bad'}>
+                      {int.format(mileage)} km vs {int.format(c.medianMileage)} km médian
+                    </div>
+                  )}
+                  {year != null && c.medianYear != null && year !== c.medianYear && (
+                    <div className={year > c.medianYear ? 'good' : 'bad'}>
+                      {year} vs {c.medianYear} médian
+                    </div>
+                  )}
+                  <ul className="cheapest">
+                    {c.cheapest.map((x) => (
+                      <li key={x.url}>
+                        <a href={x.url} target="_blank" rel="noreferrer">
+                          {euro.format(x.price)}
+                        </a>
+                        {x.adjusted != null && x.adjusted !== x.price && <span className="muted"> (≈ {euro.format(x.adjusted)} ajusté)</span>} ·{' '}
+                        {x.year ?? '?'} · {x.mileage != null ? `${int.format(x.mileage)} km` : '?'} · {x.city ?? ''}
+                      </li>
+                    ))}
+                  </ul>
+                  <a href={buildSearchUrl(c.query, null)} target="_blank" rel="noreferrer">
+                    Recherche nationale ↗
+                  </a>
+                </>
               )}
-              {year != null && c.medianYear != null && year !== c.medianYear && (
-                <div className={year > c.medianYear ? 'good' : 'bad'}>
-                  {year} vs {c.medianYear} médian
-                </div>
-              )}
-              <ul className="cheapest">
-                {c.cheapest.map((x) => (
-                  <li key={x.url}>
-                    <a href={x.url} target="_blank" rel="noreferrer">
-                      {euro.format(x.price)}
-                    </a>
-                    {x.adjusted != null && x.adjusted !== x.price && <span className="muted"> (≈ {euro.format(x.adjusted)} ajusté)</span>} ·{' '}
-                    {x.year ?? '?'} · {x.mileage != null ? `${int.format(x.mileage)} km` : '?'} · {x.city ?? ''}
-                  </li>
-                ))}
-              </ul>
-              <a href={buildSearchUrl(c.query, null)} target="_blank" rel="noreferrer">
-                Recherche nationale ↗
-              </a>
-            </>
-          )}
-        </details>
-      )}
-    </aside>
+            </section>
   );
 }

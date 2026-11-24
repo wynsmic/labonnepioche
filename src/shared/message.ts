@@ -2,67 +2,79 @@ import type { StoredAd } from './types';
 
 const fold = (text: string) => text.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
 
+/** Short first message: a few questions, the most telling first. */
+const MAX_QUESTIONS = 4;
+const MAX_SPECIFIC = 1;
+const SIGNATURE = 'Michael';
+
+/** "Le VIN ?" -> "le VIN ?" (keeps acronyms): the casual tone of the list. */
+const casual = (q: string) => (/^[A-ZÀ-Ý][a-zà-ÿ’']/.test(q) ? q.charAt(0).toLowerCase() + q.slice(1) : q);
+
 /**
- * The usual questions to a seller, each with what in the listing already answers it (then it is
- * not asked) and the words that tell an AI question covers the same topic (then it is not doubled).
+ * Candidate questions in order of importance, worded as the user writes them. Each returns null
+ * when the listing already settles it, and the words that make an AI question cover its topic.
  */
-const BASE: { question: string; answered: RegExp; topic: RegExp }[] = [
+const TOPICS: { ask: (ad: StoredAd, text: string) => string | null; topic: RegExp }[] = [
   {
-    question: 'S’il y a des frais à prévoir ?',
-    answered: /aucun frais|pas de frais|rien a prevoir|aucune? (reparation|travaux)/,
-    topic: /frais|prevoir|reparation|travaux/,
+    // Several vehicles for sale: a hidden trader?
+    ask: (ad) => {
+      const others = ad.sellerCheck?.otherVehicles ?? 0;
+      return others >= 1
+        ? `vous vendez ${others === 1 ? 'deux voitures' : 'plusieurs voitures'} : vous les avez eues pour un usage ou une revente pro ?`
+        : null;
+    },
+    topic: /pro\b|revente|marchand|professionnel/,
   },
   {
-    question: 'Si le contrôle technique est bon ou s’il comporte des réserves ?',
-    answered: /\b(ct|controle technique) (ok|vierge|sans (defaut|reserve)|r?e?c?e?n?t? ?fait|a jour)/,
-    topic: /\bct\b|controle technique/,
+    // Costs ahead (a repair the text announces: its quote).
+    ask: (ad, text) => {
+      const repair = ad.facts?.repairs?.[0];
+      if (repair) return `l’annonce parle de « ${repair} » : vous avez un devis ?`;
+      if (/aucun frais|pas de frais|rien a prevoir|aucune? (reparation|travaux)/.test(text)) return null;
+      return 'est-ce qu’il y aura prochainement des frais à prévoir (entretien, pièces d’usure…) ?';
+    },
+    topic: /frais|prevoir|reparation|travaux|devis|usure/,
   },
   {
-    question: 'Si le véhicule est d’origine française ou importé ?',
-    answered: /origine francaise|francaise d.origine|vehicule francais|non importe|pas d.import/,
-    topic: /import|origine/,
+    // History: the Autoviza report when Leboncoin shows its teaser, else the maintenance.
+    ask: (ad, text) => {
+      if (Object.keys(ad.attributes).some((k) => k.startsWith('vehicle_history_teaser'))) return 'vous avez le rapport Autoviza ?';
+      const stated = ad.facts?.maintenance === 'complet' || /carnet d.entretien|toutes les factures|historique (complet|d.entretien)|entretien (suivi|a jour|complet)/.test(text);
+      return stated ? null : 'l’entretien a-t-il été suivi en garage (factures) ?';
+    },
+    topic: /autoviza|historique|entretien|factures?|carnet|revision/,
   },
   {
-    question: 'S’il a déjà été accidenté ?',
-    answered: /(jamais|non|aucun|sans) (ete )?accident/,
+    ask: (ad, text) => (ad.facts?.accident === 'aucun' || /(jamais|non|aucun|sans) (ete )?accident/.test(text) ? null : 'elle a déjà été accidentée ?'),
     topic: /accident|choc|sinistre/,
-  },
-  {
-    question: 'Si l’historique d’entretien est disponible ?',
-    answered: /carnet d.entretien|toutes les factures|historique (complet|d.entretien)|entretien (suivi|a jour|complet)/,
-    topic: /entretien|factures?|carnet|historique|revision/,
   },
 ];
 
 /**
- * First message to the seller: the usual questions minus those the listing already answers,
- * plus the questions the analysis raised for this very listing (not doubling a topic).
+ * First message to the seller, short and in the user's tone: the most telling usual questions the
+ * listing leaves open, plus the analysis' most useful question for this very listing.
  */
 export function sellerMessage(ad: StoredAd): string {
   const text = fold(`${ad.title} ${ad.body}`);
-  const kept = BASE.filter((b) => !b.answered.test(text));
+  const asked = TOPICS.map((t) => ({ t, q: t.ask(ad, text) })).filter((x): x is { t: (typeof TOPICS)[number]; q: string } => x.q != null);
   const specific = (ad.analysis?.questions ?? [])
-    .filter((q) => !kept.some((b) => b.topic.test(fold(q))))
-    .slice(0, 3)
-    .map((q) => (/[?？]\s*$/.test(q) ? q : `${q} ?`));
-
-  const questions = [
-    ...kept.map((b) => b.question),
-    ...specific,
-    'Où peut-on voir le véhicule et comment préférez-vous procéder pour la transaction si tout est en ordre ?',
-  ];
+    .filter((q) => !asked.some((x) => x.t.topic.test(fold(q))))
+    .slice(0, MAX_SPECIFIC)
+    .map((q) => casual(q.trim().replace(/[?？.\s]*$/, '')) + ' ?');
+  const usual = asked.map((x) => x.q).slice(0, Math.max(0, MAX_QUESTIONS - specific.length));
+  const questions = [...usual, ...specific];
 
   return [
     'Bonjour,',
     '',
-    `Votre annonce « ${ad.title.trim()} » m’intéresse. Le véhicule est-il toujours disponible ?`,
+    questions.length
+      ? 'Votre annonce m’intéresse. Si le véhicule est toujours disponible, j’aurais quelques questions :'
+      : 'Votre annonce m’intéresse. Le véhicule est-il toujours disponible ?',
+    ...(questions.length ? ['', ...questions.map((q) => `- ${q}`)] : []),
     '',
-    'J’aurais quelques questions si vous avez quelques minutes :',
+    'Merci à vous',
     '',
-    ...questions.map((q) => `- ${q}`),
-    '',
-    'J’ai de la bonne disponibilité en ce moment donc je peux me caler sur vous pour tout éventuel rendez-vous.',
-    '',
-    'Bonne journée à vous',
+    'cdt',
+    SIGNATURE,
   ].join('\n');
 }

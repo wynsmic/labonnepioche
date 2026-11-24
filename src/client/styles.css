@@ -83,17 +83,26 @@ label { font-weight: 500; }
 .login { max-width: 360px; margin: 12vh auto; display: grid; gap: 10px; padding: 0 16px; }
 .new-brief { max-width: 640px; margin: 24px auto; display: grid; gap: 8px; width: calc(100% - 32px); }
 
-.layout { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr); min-height: 0; }
+.layout { flex: 1; display: grid; grid-template-columns: minmax(0, var(--list, 55%)) 7px minmax(0, 1fr); min-height: 0; }
 .left { overflow-y: auto; padding: 16px; display: grid; gap: 16px; align-content: start; }
-.right { position: relative; border-left: 1px solid var(--line); }
+.right { position: relative; }
+.splitter { position: relative; cursor: col-resize; background: var(--line); width: 7px; border-inline: 3px solid var(--bg); touch-action: none; outline: none; z-index: 2; }
+.splitter::after { content: ''; position: absolute; top: 50%; left: 50%; width: 3px; height: 32px; transform: translate(-50%, -50%); border-radius: 2px; background: var(--muted); opacity: .5; }
+.splitter:hover, .splitter:focus-visible, body.resizing .splitter { background: var(--accent); }
+.splitter:hover::after, body.resizing .splitter::after { background: #fff; opacity: 1; }
+body.resizing { cursor: col-resize; user-select: none; }
+body.resizing .map { pointer-events: none; }
 .map { position: absolute; inset: 0; }
 @media (max-width: 860px) {
   .layout { grid-template-columns: 1fr; }
+  .splitter { display: none; }
   .right { height: 360px; position: relative; order: -1; border-left: 0; border-bottom: 1px solid var(--line); }
 }
 
 .hunt { display: grid; gap: 10px; }
 .steps { display: flex; gap: 8px; flex-wrap: wrap; }
+.steps button:has(.btn-sub) { display: inline-flex; flex-direction: column; align-items: center; line-height: 1.2; }
+.btn-sub { font-size: 11px; font-weight: 450; opacity: 0.8; margin-top: 2px; }
 .zone summary, .plan summary { cursor: pointer; color: var(--muted); }
 .shortlist { border-left: 3px solid var(--v-pepite); padding: 4px 0 4px 12px; }
 .tier { border-radius: 99px; padding: 0 8px; font-size: 11px; font-weight: 700; color: #fff; }
@@ -111,11 +120,18 @@ label { font-weight: 500; }
 .ad { background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
 .ad.highlighted { border-color: var(--accent); background: var(--hl); }
 .ad.is-hidden { opacity: 0.55; }
-.ad-main { display: grid; grid-template-columns: minmax(0, 1fr) 230px; }
-.ad-link { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; color: inherit; text-decoration: none; padding: 10px; min-width: 0; }
+/* Card grid: photo and specs alone on the left; listing content above its AI verdict; price above its gap */
+.ad-main {
+  display: grid; grid-template-columns: 190px minmax(0, 1fr) 270px;
+  grid-template-areas: "media body bench" "media verdict result" "details details details";
+}
+.ad-left, .ad-link { display: contents; }
+.ad-media { grid-area: media; padding: 10px 0 10px 10px; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.ad-body { grid-area: body; padding: 10px 12px 8px 14px; }
+.ad-verdict { grid-area: verdict; padding: 0 12px 10px 14px; min-width: 0; align-self: start; }
+.bench { grid-area: bench; }
+.bench-foot { grid-area: result; padding: 0 12px 10px; border-left: 1px solid var(--line); min-width: 0; }
 .bench { border-left: 1px solid var(--line); padding: 10px 12px; display: grid; gap: 4px; align-content: start; min-width: 0; }
-.bench-big { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.bench-big .small { font-weight: 500; color: var(--muted); }
 .good { color: var(--v-pepite); }
 .fresh { color: var(--v-pepite); font-weight: 600; }
 .stale { color: var(--v-bad); }
@@ -132,8 +148,9 @@ label { font-weight: 500; }
 .compare-form .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .cheapest { margin: 4px 0; padding-left: 16px; }
 @media (max-width: 1100px) {
-  .ad-main { grid-template-columns: 1fr; }
+  .ad-main { grid-template-columns: 190px minmax(0, 1fr); grid-template-areas: "media body" "media verdict" "bench bench" "result result" "details details"; }
   .bench { border-left: 0; border-top: 1px solid var(--line); }
+  .bench-foot { border-left: 0; }
 }
 .thumb { position: relative; aspect-ratio: 4 / 3; background: var(--bg); border-radius: 8px; overflow: hidden; }
 .pro-badge { position: absolute; top: 6px; left: 6px; background: #1f2937; color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .04em; padding: 2px 6px; border-radius: 4px; box-shadow: 0 1px 3px rgb(0 0 0 / .35); }
@@ -152,16 +169,14 @@ label { font-weight: 500; }
 .score { font-weight: 700; font-variant-numeric: tabular-nums; }
 .summary { margin: 2px 0; }
 .flags { margin: 0; color: var(--v-suspect); }
-.ad-actions { display: flex; gap: 16px; padding: 6px 10px 10px; border-top: 1px solid var(--line); font-size: 13px; }
 .empty { padding: 24px 0; }
 @media (max-width: 520px) {
-  .ad-link { grid-template-columns: 100px minmax(0, 1fr); }
+  .ad-main { grid-template-columns: 110px minmax(0, 1fr); }
 }
 @media (prefers-reduced-motion: reduce) {
   * { scroll-behavior: auto !important; }
 }
 
-.bench-head { gap: 4px; }
 .check-verdict { font-size: 22px; font-weight: 800; line-height: 1.1; }
 .v-text-pepite { color: var(--v-pepite); }
 .v-text-bonne_affaire { color: var(--v-good); }
@@ -175,9 +190,6 @@ label { font-weight: 500; }
 .has-tip:hover .tip, .has-tip:focus .tip { display: block; }
 .tip-line { display: block; }
 .tip .muted-tip { opacity: .7; margin-top: 4px; }
-.target { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.check-market summary { cursor: pointer; }
-.check-market > div, .check-market > ul, .check-market > a { margin-top: 4px; }
 
 .market { border-top: 1px solid var(--line); padding: 8px 12px; display: grid; gap: 4px; }
 .market table { border-collapse: collapse; width: 100%; }
@@ -186,19 +198,6 @@ label { font-weight: 500; }
 .market td button { padding: 0 8px; min-height: 0; line-height: 1.6; }
 .demand { display: grid; gap: 10px; }
 details.shortlist > summary { cursor: pointer; }
-/* Analysis notes: about 8 lines, the rest on hover (drawn over what follows, no layout jump). */
-.clamp-box { position: relative; max-height: 11.5em; overflow: hidden; }
-.clamp.is-clamped:not(:hover):not(:focus-within) .clamp-box::after {
-  content: ''; position: absolute; inset: auto 0 0 0; height: 2.2em;
-  background: linear-gradient(to bottom, transparent, var(--card));
-}
-.ad.highlighted .clamp.is-clamped:not(:hover):not(:focus-within) .clamp-box::after { background: linear-gradient(to bottom, transparent, var(--hl)); }
-.clamp.is-clamped { cursor: zoom-in; }
-.clamp.is-clamped:hover .clamp-box, .clamp.is-clamped:focus-within .clamp-box { overflow: visible; }
-.clamp.is-clamped:hover .clamp-inner, .clamp.is-clamped:focus-within .clamp-inner {
-  position: relative; z-index: 6; background: var(--card); border-radius: 8px;
-  margin: -6px -8px; padding: 6px 8px; box-shadow: 0 6px 24px rgb(0 0 0 / .22);
-}
 button.link { background: none; border: 0; padding: 0; min-height: 0; color: var(--accent); text-decoration: underline; cursor: pointer; }
 .required { display: block; color: var(--ink); }
 
@@ -215,13 +214,9 @@ button.link { background: none; border: 0; padding: 0; min-height: 0; color: var
 .seller-attention { color: var(--v-ok); font-weight: 600; }
 .seller-suspect { color: var(--v-suspect); font-weight: 700; }
 .seller-pill { border-radius: 99px; padding: 1px 8px; font-size: 12px; font-weight: 700; border: 1px solid currentColor; }
-.target-label { display: block; font-size: 13px; font-weight: 600; }
 .warn-text { color: var(--v-suspect); }
-.bench-actions { gap: 12px; }
 .sources th { text-align: left; font-weight: 500; color: var(--muted); padding: 1px 10px 1px 0; }
-.ad-actions { align-items: center; } .ad-actions > button { order: 2; margin-left: auto; }
 
-.bench-actions { gap: 6px; flex-wrap: wrap; }
 button.action {
   min-height: 0; padding: 3px 9px; border-radius: 6px; font-size: 12px; font-weight: 600;
   background: transparent; color: var(--ink); border: 1px solid var(--line); cursor: pointer;
@@ -232,3 +227,235 @@ button.primary-action { background: var(--accent); border-color: var(--accent); 
 button.primary-action:hover:not(:disabled) { color: #fff; filter: brightness(1.08); }
 .bench-error { color: var(--v-suspect); background: color-mix(in srgb, var(--v-suspect) 8%, transparent); border-radius: 6px; padding: 4px 6px; }
 .busy-line::before { content: '⏳ '; }
+
+/* Card: key facts under the photo, model memo under the price */
+.ad-seller { display: flex; flex-wrap: wrap; gap: 0 4px; align-items: center; }
+.ad-seller .seller-pill { margin-left: 4px; }
+
+/* Verdict at the bottom of the card; hover shows the whole analysis and the seller's text */
+.verdict-wrap { border-radius: 8px; background: var(--bg); min-width: 0; }
+.verdict-foot { display: flex; align-items: center; gap: 8px; padding: 6px 8px; min-width: 0; }
+.verdict-foot .verdict { flex: none; }
+.verdict-foot .score { flex: none; font-size: 15px; cursor: help; }
+.verdict-foot .score small { font-size: 11px; color: var(--muted); font-weight: 500; }
+.verdict-comment { flex: 1; min-width: 0; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pop-score, .pop-summary { margin: 0; }
+.pop-title { font-weight: 650; margin-top: 4px; }
+.pop-desc { margin: 0; white-space: pre-wrap; color: var(--muted); }
+.note-info::before { content: '•'; color: var(--muted); }
+
+/* Top bar: listings analysed for the current hunt */
+.counter { display: grid; gap: 3px; padding: 2px 10px; border-left: 1px solid var(--line); min-width: 110px; cursor: default; }
+.counter-text { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+.counter-text strong { color: var(--ink); font-variant-numeric: tabular-nums; font-size: 14px; }
+.counter-bar { display: flex; height: 4px; border-radius: 99px; overflow: hidden; background: var(--line); gap: 1px; }
+.counter-bar .seg { min-width: 2px; }
+.seg-wait { background: var(--line); }
+
+/* Right panel head: the price, then favourite / hide / comparison settings */
+.icon-toggle {
+  display: inline-grid; place-items: center; width: 28px; height: 28px; min-height: 0; padding: 0;
+  border: 1px solid transparent; border-radius: 7px; background: none; color: var(--muted); font-size: 16px; line-height: 1; cursor: pointer;
+}
+.icon-toggle:hover:not(:disabled) { background: var(--bg); color: var(--ink); border-color: var(--line); }
+.icon-toggle.on { color: var(--ink); background: var(--bg); border-color: var(--line); }
+.icon-toggle.fav { color: #e0a100; }
+.icon-toggle:disabled { opacity: .4; cursor: default; }
+
+/* Left part: links only on the photo and the title (buttons live beside them) */
+a.thumb { display: block; }
+a.ad-title { color: inherit; text-decoration: none; }
+a.ad-title:hover { color: var(--accent); text-decoration: underline; }
+.seller-row { gap: 8px; }
+.bench-date { font-weight: 600; }
+.seller-actions { gap: 6px; align-items: center; }
+.copy-msg { position: relative; display: inline-flex; }
+.copy-toast {
+  position: absolute; left: calc(100% + 6px); top: 50%; transform: translateY(-50%); white-space: nowrap;
+  background: var(--ink); color: var(--card); font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 6px;
+  animation: toast 1.6s ease forwards; pointer-events: none; z-index: 3;
+}
+.copy-toast.is-error { background: var(--v-suspect); color: #fff; }
+@keyframes toast { 0% { opacity: 0; } 10%, 75% { opacity: 1; } 100% { opacity: 0; } }
+
+/* Right panel: date and quick toggles, the price, the next step; the conclusion sits in the bottom row */
+.bench { padding: 10px 12px 10px; display: flex; flex-direction: column; gap: 6px; }
+.bench-head { display: flex; align-items: center; gap: 2px; margin: -2px -4px 0 0; }
+.bench-date { font-size: 12.5px; font-weight: 600; }
+.bench-price { font-size: 26px; font-weight: 800; letter-spacing: -0.01em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.bench-drop { font-size: 12.5px; font-weight: 600; color: var(--v-pepite); }
+.bench-cta { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.bench-cta .action { flex: 1; justify-content: center; text-align: center; }
+.bench .compare-form { margin-top: 2px; }
+
+/* Both conclusions (AI verdict on the left, price gap on the right) read as one family */
+.verdict-foot { min-height: 34px; }
+.gap-badge {
+  flex: none; border-radius: 99px; padding: 1px 9px; font-size: 13px; font-weight: 800; color: #fff;
+  font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+}
+.tone-good { background: var(--v-pepite); }
+.tone-neutral { background: var(--v-ok); }
+.tone-bad { background: var(--v-bad); }
+.tone-warn { background: var(--v-suspect); }
+.price-wrap .verdict-comment { font-weight: 600; }
+.peers { color: var(--muted); font-weight: 500; cursor: help; border-bottom: 1px dotted currentColor; }
+.price-wrap .sources th { padding-right: 10px; }
+
+/* Chevron that opens a conclusion's detail */
+.detail-toggle {
+  flex: none; display: inline-grid; place-items: center; width: 24px; height: 24px; min-height: 0; padding: 0;
+  border-radius: 50%; border: 1px solid var(--line); background: var(--card); color: var(--muted); cursor: pointer;
+  transition: transform .15s ease, color .15s ease, border-color .15s ease;
+}
+.detail-toggle:hover { color: var(--accent); border-color: var(--accent); }
+.detail-toggle.is-open { transform: rotate(180deg); color: var(--accent); border-color: var(--accent); }
+.verdict-wrap.is-open { box-shadow: inset 0 0 0 1px var(--accent); }
+.price-wrap .verdict-comment { white-space: nowrap; }
+
+/* Detail panels: full card width, side by side when both are open; text is selectable */
+.ad-details {
+  grid-area: details; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px;
+  padding: 0 10px 10px;
+}
+.detail-panel {
+  display: grid; gap: 6px; align-content: start; padding: 10px 12px; border-radius: 8px;
+  background: var(--bg); border: 1px solid var(--line); user-select: text; min-width: 0;
+}
+.detail-head { display: flex; align-items: center; gap: 8px; margin: -2px -4px 2px 0; }
+.detail-panel .sources { width: auto; }
+.detail-panel .bench-cta { margin-top: 4px; }
+.detail-panel .bench-cta .action { flex: none; }
+.detail-panel .strip { max-width: 300px; }
+.price-wrap .verdict-foot { gap: 6px; }
+.new-badge {
+  position: absolute; top: 6px; right: 6px; background: var(--accent); color: #fff; font-size: 10px; font-weight: 800;
+  letter-spacing: .05em; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; box-shadow: 0 1px 3px rgb(0 0 0 / .35);
+}
+
+/* Left part of the card: photo and specs, then title, seller, the model memo */
+.ad-body { gap: 4px; }
+a.ad-title { font-size: 15px; font-weight: 650; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ad-seller { font-size: 12.5px; }
+.spec-hint { display: block; font-size: 11px; font-weight: 500; color: var(--muted); }
+.spec-hint.good { color: var(--v-pepite); }
+.spec-hint.warn { color: var(--v-bad); }
+
+.model { display: grid; gap: 2px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); color: var(--muted); }
+.model-name { color: var(--ink); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.model-tagline { font-style: italic; }
+.model-tags { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0 4px; }
+.model-tags li:not(:last-child)::after { content: '·'; margin-left: 4px; opacity: .6; }
+.model-trim strong { color: var(--ink); font-weight: 600; }
+.model-label { margin-right: 2px; }
+.ad-verdict .verdict-foot { gap: 6px; padding: 6px 6px 6px 8px; }
+.ad-verdict .verdict { padding: 1px 8px; }
+.specs {
+  list-style: none; margin: 2px 0 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+  border-radius: 8px; overflow: hidden; background: var(--line); border: 1px solid var(--line); grid-template-columns: auto auto;
+  font-variant-numeric: tabular-nums;
+}
+.spec { display: grid; place-items: center; background: var(--card); padding: 4px 4px; white-space: nowrap; font-size: 12px; font-weight: 600; line-height: 1.25; text-align: center; min-width: 0; overflow-wrap: anywhere; }
+.ad.highlighted .spec { background: var(--hl); }
+/* Photo fills the left column's height; the specs table sits at its bottom */
+.ad-media .thumb { flex: 1 1 0; aspect-ratio: auto; min-height: 120px; }
+.ad-media .thumb img { position: absolute; inset: 0; }
+.ad-media .specs { flex: none; margin-top: 0; }
+/* Title with the place on the right; seller kind, check and message on the line below */
+.ad-head { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.ad-head .ad-title { flex: 1 1 auto; min-width: 0; }
+.ad-place { flex: none; max-width: 40%; font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.seller-actions { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: 12.5px; }
+.seller-line { display: inline-flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; }
+.seller-kind { color: var(--muted); }
+.seller-meta { color: var(--muted); font-weight: 400; }
+.seller-line.seller-ok .seller-meta, .seller-line.seller-attention .seller-meta, .seller-line.seller-suspect .seller-meta { color: inherit; opacity: .85; }
+button.mini-action {
+  min-height: 0; padding: 1px 8px; font-size: 12px; font-weight: 600; line-height: 1.5; border-radius: 99px;
+  border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer;
+}
+button.mini-action:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+button.mini-action:disabled { opacity: .5; cursor: default; }
+.seller-actions .icon-toggle { width: 24px; height: 24px; }
+
+/* Spinner on a button whose (long) action is running */
+button.is-loading { display: inline-flex; align-items: center; justify-content: center; gap: 7px; cursor: progress; }
+button.is-loading:disabled { opacity: 1; }
+button.is-loading::before {
+  content: ''; flex: none; width: 0.95em; height: 0.95em; border-radius: 50%;
+  border: 2px solid currentColor; border-right-color: transparent; animation: spin .7s linear infinite;
+}
+button.mini-action.is-loading::before { width: 0.8em; height: 0.8em; border-width: 1.5px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { button.is-loading::before { animation-duration: 2s; } }
+/* The price action: compact, vertically centred in the room left under the price */
+.bench > .bench-cta { margin: auto 0; }
+.bench > .bench-cta .action { flex: none; font-size: 12.5px; padding: 3px 12px; min-height: 0; line-height: 1.5; }
+.bench > .bench-cta .icon-toggle { width: 24px; height: 24px; font-size: 14px; }
+
+/* Lighter card: borderless specs, more air between photo and content, an indented model memo */
+.specs { background: none; border: 0; border-radius: 0; gap: 2px 8px; margin-top: 2px; }
+.spec { background: none; padding: 0; justify-items: center; font-weight: 600; color: var(--ink); }
+.ad.highlighted .spec { background: none; }
+.ad-body { padding-left: 22px; }
+.ad-verdict { padding-left: 22px; }
+.model { border-top: 0; margin-top: 8px; padding: 0 0 0 12px; border-left: 2px solid color-mix(in srgb, var(--line) 70%, transparent); gap: 3px; line-height: 1.45; }
+
+/* Place of the listing: a Google Maps route from home */
+a.ad-place { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); text-decoration: none; min-width: 0; max-width: 45%; overflow: visible; }
+.ad-place-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+a.ad-place svg { flex: none; }
+a.ad-place:hover { color: var(--accent); text-decoration: underline; }
+.home-button { font-size: 12.5px; max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Leboncoin's own price verdict, under the price */
+.lbc-verdict { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12.5px; }
+.lbc-badge {
+  flex: none; display: inline-grid; place-items: center; height: 16px; padding: 0 4px; border-radius: 4px;
+  background: #ec5a13; color: #fff; font-size: 10px; font-weight: 800; letter-spacing: .02em; line-height: 1;
+}
+.lbc-label { font-weight: 650; }
+.lbc-range { color: var(--muted); font-variant-numeric: tabular-nums; }
+.lbc-good .lbc-label { color: var(--v-pepite); }
+.lbc-fair .lbc-label { color: var(--ink); }
+.lbc-meh .lbc-label { color: var(--v-ok); }
+.lbc-bad .lbc-label { color: var(--v-bad); }
+.lbc-none .lbc-label { color: var(--muted); font-weight: 500; }
+
+/* Message to the seller: electric blue once written (15 days) */
+.icon-toggle.msg-button.is-contacted { color: #1e6bff; }
+.icon-toggle.msg-button:hover:not(:disabled) { color: #1e6bff; border-color: #1e6bff; }
+
+
+/* Add a listing by its link, in the list header */
+button.add-listing {
+  display: inline-flex; align-items: center; gap: 5px; padding: 4px 12px; min-height: 0; border-radius: 99px;
+  border: 1px dashed var(--accent); background: var(--card); color: var(--accent); font-weight: 650; font-size: 12.5px; cursor: pointer;
+}
+button.add-listing span { font-size: 14px; line-height: 1; }
+button.add-listing:hover { background: var(--accent); color: #fff; border-style: solid; }
+.add-listing-form { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; flex: 1 1 360px; }
+.add-listing-form input { flex: 1 1 240px; min-width: 0; font-size: 12.5px; padding: 4px 8px; }
+.add-listing-form .action { font-size: 12.5px; padding: 3px 12px; min-height: 0; }
+.add-listing-error { flex-basis: 100%; }
+
+/* Ask the AI about a listing, at the foot of the verdict detail */
+.ask-box { display: grid; gap: 8px; margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--line); }
+.ask-turn { display: grid; gap: 3px; }
+.ask-q { font-weight: 650; }
+.ask-q::before { content: '› '; color: var(--accent); }
+.ask-a { padding: 6px 10px; border-radius: 8px; background: var(--card); border: 1px solid var(--line); white-space: pre-wrap; }
+.ask-form { display: flex; gap: 6px; align-items: center; }
+.ask-form input { flex: 1; min-width: 0; font-size: 12.5px; padding: 5px 9px; }
+.ask-form .action { flex: none; font-size: 12.5px; padding: 3px 12px; min-height: 0; }
+
+/* Add a model to the hunt, under the shortlist */
+.shortlist li { position: relative; padding-right: 26px; }
+.remove-model { position: absolute; top: 0; right: 0; width: 20px; height: 20px; padding: 0; min-height: 0; border: none; border-radius: 50%; background: transparent; color: var(--muted, #999); font-size: 11px; line-height: 20px; cursor: pointer; opacity: 0.45; }
+.shortlist li:hover .remove-model { opacity: 1; }
+.remove-model:hover:not(:disabled) { background: rgba(200, 40, 40, 0.1); color: #c62828; }
+.remove-model:disabled { cursor: default; opacity: 0.2; }
+.add-model { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+.add-model input { flex: 1 1 240px; min-width: 0; font-size: 13px; padding: 5px 9px; }
+.add-model .action { flex: none; font-size: 12.5px; padding: 3px 12px; min-height: 0; }
+.add-model .bench-error { flex-basis: 100%; }
