@@ -275,15 +275,17 @@ export function App() {
       )}
 
       {creating ? (
-        <NewBrief
-          onCancel={briefs.length ? () => setCreating(false) : undefined}
-          onCreated={async (brief) => {
-            setCreating(false);
-            await loadBriefs();
-            setSelectedId(brief.id);
-          }}
-          onError={setError}
-        />
+        <div className="page-scroll">
+          <NewBrief
+            onCancel={briefs.length ? () => setCreating(false) : undefined}
+            onCreated={async (brief) => {
+              setCreating(false);
+              await loadBriefs();
+              setSelectedId(brief.id);
+            }}
+            onError={setError}
+          />
+        </div>
       ) : detail ? (
         <main className="layout" ref={layoutRef} style={{ ["--list" as string]: `${listWidth}%` }}>
           <section className="left">

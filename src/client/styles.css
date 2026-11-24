@@ -73,8 +73,12 @@ label { font-weight: 500; }
 .banner.error { background: var(--error-bg); margin: 8px 16px 0; }
 .error-text { color: var(--v-suspect); margin: 0; }
 
-.app { display: flex; flex-direction: column; height: 100%; }
+/* The page never scrolls as a whole: the top bar stays, the list (or the new-search form) scrolls inside. */
+html, body { overflow: hidden; }
+.app { display: flex; flex-direction: column; height: 100%; overflow: clip; }
+.page-scroll { flex: 1; min-height: 0; overflow-y: auto; }
 .topbar {
+  position: sticky; top: 0; z-index: 10; flex: none;
   display: flex; gap: 10px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line);
   background: var(--card); flex-wrap: wrap;
 }
@@ -97,6 +101,7 @@ body.resizing .map { pointer-events: none; }
   .layout { grid-template-columns: 1fr; }
   .splitter { display: none; }
   .right { height: 360px; position: relative; order: -1; border-left: 0; border-bottom: 1px solid var(--line); }
+  .layout { grid-template-rows: 360px minmax(0, 1fr); }
 }
 
 .hunt { display: grid; gap: 10px; }
