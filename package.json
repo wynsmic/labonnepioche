@@ -5,6 +5,7 @@
   "description": "Chasseur de voitures d’occasion sous-cotées sur Leboncoin, guidé par une IA",
   "scripts": {
     "setup": "node scripts/setup.mjs",
+    "predev": "CI=1 wrangler d1 migrations apply labonnepioche --local > /dev/null",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "npm run build && wrangler dev",

@@ -111,7 +111,7 @@ déploiement, puis recharge l'extension.
 | `npm run dev` | application et API en local |
 | `npm test` | tests |
 | `npm run typecheck` | vérification des types |
-| `npm run db:migrate:local` | applique les nouvelles migrations en local |
+| `npm run db:migrate:local` | applique les nouvelles migrations en local (fait aussi par `npm run dev`) |
 
 **Coût indicatif avec gpt-5.5 :** quelques dizaines de centimes pour préparer une recherche, environ 1 centime
 par annonce analysée. Une annonce n'est analysée à nouveau que si son prix ou son texte change.
