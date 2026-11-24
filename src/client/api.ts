@@ -48,7 +48,7 @@ export const api = {
   createBrief: (input: { title: string; prompt: string; zone?: string }) =>
     call<Brief>('POST', '/briefs', input),
   brief: (id: string) => call<BriefDetail>('GET', `/briefs/${id}`),
-  updateBrief: (id: string, patch: { title?: string; prompt?: string; note?: string; zone?: string }) =>
+  updateBrief: (id: string, patch: { title?: string; prompt?: string; note?: string; zone?: string; includePros?: boolean }) =>
     call<Brief>('PATCH', `/briefs/${id}`, patch),
   deleteBrief: (id: string) => call<{ ok: true }>('DELETE', `/briefs/${id}`),
   plan: (id: string) => call<{ plan: Plan; createdAt: string }>('POST', `/briefs/${id}/plan`),

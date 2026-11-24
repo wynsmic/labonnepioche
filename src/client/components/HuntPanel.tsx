@@ -334,7 +334,7 @@ export function HuntPanel({
                 for (let page = 1; page <= PAGES_PER_SEARCH; page++) {
                   if (!alive.current) return;
                   addLog(`Leboncoin : « ${search.label} », page ${page}…`);
-                  const result = await fetchListings(buildSearchUrl(search, brief.locations, page));
+                  const result = await fetchListings(buildSearchUrl(search, brief.locations, page, { pros: brief.includePros }));
                   if (!result.ok) {
                     if (result.reason === 'captcha') {
                       // Another search would hit the same check: stop the whole collection.
@@ -414,6 +414,31 @@ export function HuntPanel({
         >
           {busy === 'analyse' ? `Analyse…${pending ? ` (${pending} restantes)` : ''}` : `3. Analyser${pending ? ` (${pending})` : ''}`}
         </button>
+        <label
+          className="pros-toggle small"
+          title="Par défaut, seules les annonces de particuliers sont récupérées. Coche pour inclure aussi les professionnels (garages, mandataires) à la prochaine récupération."
+        >
+          <input
+            type="checkbox"
+            checked={brief.includePros}
+            disabled={!!busy}
+            onChange={async (e) => {
+              const includePros = e.target.checked;
+              try {
+                await api.updateBrief(brief.id, { includePros });
+                addLog(
+                  includePros
+                    ? 'Les annonces de professionnels seront incluses à la prochaine récupération.'
+                    : 'Particuliers seulement : les annonces de pros partiront à la prochaine récupération (sauf favoris).',
+                );
+                await onChanged();
+              } catch (err) {
+                addLog(`Réglage non enregistré : ${(err as Error).message}`);
+              }
+            }}
+          />
+          Inclure les pros
+        </label>
       </div>
 
       {extOk === false && (
@@ -508,7 +533,7 @@ export function HuntPanel({
                     )}
                   </span>
                 </label>
-                <a className="small" href={buildSearchUrl(s, brief.locations)} target="_blank" rel="noreferrer">
+                <a className="small" href={buildSearchUrl(s, brief.locations, 1, { pros: brief.includePros })} target="_blank" rel="noreferrer">
                   Ouvrir sur Leboncoin ↗
                 </a>
               </li>

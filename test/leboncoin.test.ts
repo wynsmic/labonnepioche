@@ -43,6 +43,10 @@ describe('buildSearchUrl', () => {
     );
     expect([...url.searchParams.keys()]).toEqual(['category', 'owner_type', 'sort', 'order']);
   });
+
+  it('includes professional sellers on demand', () => {
+    expect(new URL(buildSearchUrl(search, null, 1, { pros: true })).searchParams.has('owner_type')).toBe(false);
+  });
 });
 
 describe('locationsFromUrl', () => {
@@ -91,6 +95,7 @@ describe('matchesSearch', () => {
   });
   it('drops professional sellers', () => {
     expect(matchesSearch({ ...listing('Toyota Yaris', 9000, {}), seller: 'pro' }, yaris)).toBe(false);
+    expect(matchesSearch({ ...listing('Toyota Yaris', 9000, {}), seller: 'pro' }, yaris, { pros: true })).toBe(true);
   });
 });
 

@@ -111,7 +111,7 @@ app.patch('/briefs/:id', async (c) => {
   const brief = await db.getBrief(c.env.DB, c.req.param('id'));
   if (!brief) return c.json({ error: 'Recherche introuvable' }, 404);
   const patch = BriefInput.partial()
-    .extend({ note: z.string().max(500).optional() })
+    .extend({ note: z.string().max(500).optional(), includePros: z.boolean().optional() })
     .parse(await c.req.json());
   const zone = patch.zone === undefined ? undefined : await resolveZone(patch.zone);
   if (zone && 'error' in zone) return c.json({ error: zone.error }, 400);
@@ -120,6 +120,7 @@ app.patch('/briefs/:id', async (c) => {
     prompt: patch.prompt,
     note: patch.note,
     zone,
+    includePros: patch.includePros,
   });
   return c.json(updated);
 });
@@ -253,7 +254,7 @@ app.post('/briefs/:id/ads', async (c) => {
   // Keep only listings that match the planned search and contain no disqualifying keyword.
   const current = await db.latestPlan(c.env.DB, brief.id);
   const search = current?.plan.searches.find((s) => s.label === input.searchLabel);
-  const onTarget = search ? input.ads.filter((ad: Ad) => matchesSearch(ad, search)) : input.ads;
+  const onTarget = search ? input.ads.filter((ad: Ad) => matchesSearch(ad, search, { pros: brief.includePros })) : input.ads;
   const kept = onTarget.filter((ad: Ad) => !isExcluded(`${ad.title} ${ad.body}`, search?.exclude_keywords ?? []));
   const seenAt = new Date().toISOString();
   // Search results carry no description: keep the text already read on the listing page.

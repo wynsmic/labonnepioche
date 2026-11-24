@@ -204,6 +204,8 @@ export interface Brief {
   updatedAt: string;
   /** Start of the latest collection (same format as StoredAd.firstSeen); listings first seen since are new. */
   lastCollectAt: string | null;
+  /** Also collect professional sellers' listings (default: private sellers only). */
+  includePros: boolean;
 }
 
 /** The listing's current verdict: the check (made with the national comparison) wins over the first analysis. */

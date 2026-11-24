@@ -107,6 +107,8 @@ body.resizing .map { pointer-events: none; }
 .hunt { display: grid; gap: 10px; }
 .steps { display: flex; gap: 8px; flex-wrap: wrap; }
 .steps button:has(.btn-sub) { display: inline-flex; flex-direction: column; align-items: center; line-height: 1.2; }
+.pros-toggle { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--muted); cursor: pointer; user-select: none; }
+.pros-toggle input { margin: 0; }
 .btn-sub { font-size: 11px; font-weight: 450; opacity: 0.8; margin-top: 2px; }
 .zone summary, .plan summary { cursor: pointer; color: var(--muted); }
 .shortlist { border-left: 3px solid var(--v-pepite); padding: 4px 0 4px 12px; }

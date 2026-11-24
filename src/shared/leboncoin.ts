@@ -12,7 +12,8 @@ function range(min: number | null, max: number | null): string | null {
  * parameter copied from a Leboncoin search the user set up with their area
  * (Leboncoin's location format is opaque, so it is reused as is).
  */
-export function buildSearchUrl(search: Search, locations: string | null, page = 1): string {
+/** `pros`: also professional sellers (by default, private sellers only: the deals come from them). */
+export function buildSearchUrl(search: Search, locations: string | null, page = 1, opts: { pros?: boolean } = {}): string {
   const params = new URLSearchParams();
   params.set('category', String(search.category));
   if (search.text.trim()) params.set('text', search.text.trim());
@@ -23,8 +24,7 @@ export function buildSearchUrl(search: Search, locations: string | null, page = 
   const regdate = range(search.regdate_min, search.regdate_max);
   if (regdate) params.set('regdate', regdate);
   if (locations) params.set('locations', locations);
-  // Private sellers only: real deals don't come from professionals.
-  params.set('owner_type', 'private');
+  if (!opts.pros) params.set('owner_type', 'private');
   params.set('sort', 'time');
   params.set('order', 'desc');
   if (page > 1) params.set('page', String(page));
@@ -87,7 +87,7 @@ export function hasRequiredWords(ad: Ad, groups: string[][] | undefined): boolea
 }
 
 /**
- * Safety net on what Leboncoin returned: a private seller, and a listing that matches the planned
+ * Safety net on what Leboncoin returned: a private seller (unless `pros`), and a listing that matches the planned
  * search (all its keywords in the title or make/model, the version's required words, price, year
  * and mileage within range). Unknown values pass.
  */
@@ -101,8 +101,8 @@ export function isMetropolitan(ad: Pick<Ad, 'zipcode' | 'lat' | 'lng'>): boolean
   return true;
 }
 
-export function matchesSearch(ad: Ad, search: Search): boolean {
-  if (ad.seller === 'pro' || !isMetropolitan(ad)) return false;
+export function matchesSearch(ad: Ad, search: Search, opts: { pros?: boolean } = {}): boolean {
+  if ((ad.seller === 'pro' && !opts.pros) || !isMetropolitan(ad)) return false;
   const haystack = ` ${normalize(`${ad.title} ${ad.attributes.brand ?? ''} ${ad.attributes.model ?? ''}`)} `;
   const words = normalize(search.text).split(' ').filter((w) => w.length > 1);
   if (!words.every((w) => haystack.includes(` ${w} `) || haystack.includes(` ${w}`))) return false;

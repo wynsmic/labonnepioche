@@ -11,6 +11,7 @@ interface BriefRow {
   locations: string | null;
   updated_at: string;
   last_collect_at: string | null;
+  include_pros: number;
 }
 
 interface AdRow {
@@ -37,6 +38,7 @@ const toBrief = (r: BriefRow): Brief => ({
   locations: r.locations,
   updatedAt: r.updated_at,
   lastCollectAt: r.last_collect_at,
+  includePros: r.include_pros === 1,
 });
 
 const toAd = (r: AdRow): StoredAd => ({
@@ -56,14 +58,14 @@ const toAd = (r: AdRow): StoredAd => ({
 
 export async function listBriefs(db: D1Database): Promise<Brief[]> {
   const { results } = await db
-    .prepare('SELECT id, title, prompt, zone, locations, updated_at, last_collect_at FROM briefs ORDER BY updated_at DESC')
+    .prepare('SELECT id, title, prompt, zone, locations, updated_at, last_collect_at, include_pros FROM briefs ORDER BY updated_at DESC')
     .all<BriefRow>();
   return results.map(toBrief);
 }
 
 export async function getBrief(db: D1Database, id: string): Promise<Brief | null> {
   const row = await db
-    .prepare('SELECT id, title, prompt, zone, locations, updated_at, last_collect_at FROM briefs WHERE id = ?')
+    .prepare('SELECT id, title, prompt, zone, locations, updated_at, last_collect_at, include_pros FROM briefs WHERE id = ?')
     .bind(id)
     .first<BriefRow>();
   return row ? toBrief(row) : null;
@@ -96,20 +98,21 @@ export async function createBrief(
 export async function updateBrief(
   db: D1Database,
   brief: Brief,
-  patch: { title?: string; prompt?: string; zone?: { text: string | null; locations: string | null }; note?: string },
+  patch: { title?: string; prompt?: string; zone?: { text: string | null; locations: string | null }; note?: string; includePros?: boolean },
 ): Promise<Brief> {
   const next = {
     title: patch.title ?? brief.title,
     prompt: patch.prompt ?? brief.prompt,
     zone: patch.zone ? patch.zone.text : brief.zone,
     locations: patch.zone ? patch.zone.locations : brief.locations,
+    includePros: patch.includePros ?? brief.includePros,
   };
   const statements = [
     db
       .prepare(
-        "UPDATE briefs SET title = ?, prompt = ?, zone = ?, locations = ?, updated_at = datetime('now') WHERE id = ?",
+        "UPDATE briefs SET title = ?, prompt = ?, zone = ?, locations = ?, include_pros = ?, updated_at = datetime('now') WHERE id = ?",
       )
-      .bind(next.title, next.prompt, next.zone, next.locations, brief.id),
+      .bind(next.title, next.prompt, next.zone, next.locations, next.includePros ? 1 : 0, brief.id),
   ];
   if (patch.prompt !== undefined && patch.prompt !== brief.prompt) {
     statements.push(
