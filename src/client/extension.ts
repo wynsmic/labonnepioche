@@ -17,7 +17,7 @@ function send<T>(message: unknown): Promise<T> {
   });
 }
 
-/** True when the Affaires extension is installed in this Chrome. */
+/** True when the La Bonne Pioche extension is installed in this Chrome. */
 export async function extensionReady(): Promise<boolean> {
   try {
     const r = await send<{ ok: boolean }>({ type: 'ping' });

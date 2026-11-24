@@ -1,4 +1,4 @@
-// Messages from the Affaires web app (externally_connectable):
+// Messages from the La Bonne Pioche web app (externally_connectable):
 //   { type: 'ping' }            -> { ok: true, version }
 //   { type: 'fetch', url }      -> { ok: true, ads } | { ok: false, reason }
 //   { type: 'profile', url }    -> { ok: true, memberSince, totalAds, badges, ads, text } | { ok: false, reason }

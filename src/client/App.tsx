@@ -203,7 +203,7 @@ export function App() {
       const first = await api.verify(detail.brief.id, ad.id, query);
       if ('needCandidates' in first) {
         setChecking({ id: adId, step: 'Annonces en France…' });
-        if (!(await extensionReady())) throw new Error('Extension Affaires introuvable dans ce navigateur.');
+        if (!(await extensionReady())) throw new Error('Extension La Bonne Pioche introuvable dans ce navigateur.');
         const candidates: Ad[] = [];
         for (const [i, url] of first.urls.entries()) {
           const result = await fetchListings(url);
@@ -230,7 +230,7 @@ export function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <span className="brand">Affaires</span>
+        <span className="brand">La Bonne Pioche</span>
         <select
           aria-label="Recherche en cours"
           value={selectedId ?? ''}

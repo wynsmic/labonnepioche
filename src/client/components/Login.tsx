@@ -23,7 +23,7 @@ export function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
         }
       }}
     >
-      <h1>Affaires</h1>
+      <h1>La Bonne Pioche</h1>
       <p className="muted">Les bonnes affaires Leboncoin, triées par l’IA.</p>
       <label htmlFor="password">Mot de passe</label>
       <input

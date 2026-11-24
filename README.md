@@ -1,109 +1,117 @@
-# Affaires
+<p align="center"><img src="public/favicon.svg" width="72" alt=""></p>
 
-Trouve les bonnes affaires sur Leboncoin avec une IA (GPT par défaut, ou Claude).
+# La Bonne Pioche
 
-1. **Préparer** : tu décris ce que tu cherches. L’IA se renseigne sur le web (modèles fiables, prix de marché,
-   pièges), puis propose plusieurs recherches Leboncoin complémentaires (gammes de prix, kilométrages, mots-clés).
-2. **Récupérer** : l'extension Chrome ouvre ces recherches (particuliers uniquement : les vraies affaires ne
-   viennent pas des professionnels) dans ton navigateur, lit les annonces affichées et les
-   envoie à l'outil. Les annonces hors critères ou qui contiennent un mot disqualifiant (« pour pièces »…)
-   sont écartées. La liste devient ce que Leboncoin montre maintenant : les anciennes annonces non revues
-   partent (sauf les favoris), celles revues à l'identique gardent leur analyse.
-   Les pages de résultats ne contiennent pas la description : l'extension ouvre ensuite chaque annonce
-   gardée (une seule fois, mise en banque 15 jours) pour lire le texte du vendeur. Un petit modèle en tire
-   des faits (accident, propriétaires, réparations à prévoir, état, entretien, kilométrage douteux…).
-3. **Analyser** : l’IA note chaque annonce (0–100, verdict), la résume, liste les signaux d'alerte et les
-   questions à poser, à partir de son prix attendu (voir plus bas).
-Chaque version de la demande est gardée ; une analyse reste valable 15 jours pour la même demande.
-4. **Vendeurs des affaires frappantes** : pour toute annonce à plus de 15 % sous le marché, l'extension lit le
-   profil public du vendeur (ancienneté, nombre d'annonces, autres véhicules en vente) ; un compte tout neuf
-   ou une activité de revente est signalé (« ⚠ vendeur ») et pris en compte par « Analyser le prix ».
+Repère les voitures d'occasion sous-cotées sur Leboncoin. Tu décris ce que tu cherches. Une IA prépare les
+recherches, lit les annonces et estime le prix juste de chaque voiture. Pour cela, elle s'appuie sur une
+courbe de prix ajustée sur le marché réel.
 
-## Prix attendu : une courbe par modèle
+## Démarrer en 2 minutes
 
-`ln(prix) = c − α·ln(1 + âge) − β·(ln(1 + km/10 000) − ln(1 + 13 000·âge/10 000))` (`src/shared/pricing.ts`)
-
-- **Âge en loi de puissance** : décote forte au début puis ralentie. α = 0,36 reproduit les repères du marché
-  français (≈ −22 % la 1re année, −14 % la 2e, −10 % la 3e… ≈ −3 % vers 10 ans).
-- **Kilométrage en écart au kilométrage normal pour l'âge** (13 000 km/an), en logarithme (effet décroissant),
-  comme dans les études hédoniques des annonces européennes. β = 0,25 : −13 % à 120 000 km au lieu de 65 000
-  pour une voiture de 5 ans.
-- **Avant « Analyser le prix »** : la courbe vient des prix de marché que l'IA donne pour chaque modèle au plan.
-- **Après** : la recherche France du modèle (±4 ans, tous kilométrages, 3 pages) est lue une fois (banque
-  15 jours, partagée entre toutes les recherches), puis la courbe est ajustée sur ces annonces : régression
-  robuste (Huber), pentes tirées vers la loi de départ et libérées seulement avec au moins 25 annonces sur
-  4 années, bornées ; épaves et kilométrages douteux exclus. Elle sert ensuite à toutes les annonces du modèle.
-- **Le texte de l'annonce** corrige le prix : accident léger −10 %, grave −30 % (fourchettes des experts :
-  −5 à −15 %, −25 à −40 %), puis l'effet de l'état, des options, réparations, entretien et propriétaires lu par
-  l'IA (borné entre −35 et +12 %).
-- **Fourchette** : la moitié centrale du marché autour de la courbe (dispersion mesurée des annonces).
-
-La liste ressemble à Leboncoin, un clic ouvre l'annonce sur Leboncoin, et la carte situe les annonces (les
-annonces masquées disparaissent de la carte, les favoris sont cerclés de jaune).
-
-## Pourquoi une extension
-
-Leboncoin bloque les robots et interdit l'aspiration automatique de ses annonces. L'outil ne contacte donc jamais
-Leboncoin depuis un serveur : c'est ton propre Chrome qui ouvre les pages, comme quand tu navigues, à rythme
-humain (une page toutes les 4 à 8 secondes, 2 pages par recherche). Si Leboncoin affiche une vérification,
-l'onglet passe au premier plan pour que tu la résolves. Garde un usage personnel et modéré.
-
-## Installer l'extension (une fois)
-
-1. Ouvre `chrome://extensions`, active le **mode développeur** (en haut à droite).
-2. **Charger l'extension non empaquetée** → choisis le dossier `extension/` de ce projet.
-3. Recharge la page de l'outil. L'avertissement « extension non détectée » disparaît.
-
-**Après le déploiement**, remplace `https://*.workers.dev/*` dans `externally_connectable.matches` de
-`extension/manifest.json` par l'adresse exacte de ton outil (par exemple
-`https://affaires.ton-compte.workers.dev/*`), puis recharge l'extension. Sinon, n'importe quel site en
-`.workers.dev` pourrait lui demander d'ouvrir des recherches Leboncoin. L'extension n'ouvre que des pages de
-résultats (`/recherche`), jamais tes messages ou tes favoris.
-
-## Déployer sur Cloudflare (gratuit)
-
-Prérequis : un compte Cloudflare et une clé API OpenAI (platform.openai.com) ou Anthropic.
+Prérequis : Node 20+ et Chrome.
 
 ```bash
 npm install
+npm run setup   # crée .dev.vars (secrets locaux) et la base SQLite locale
+npm run dev     # http://localhost:5199 — mot de passe : pioche
+```
+
+Ensuite, installe l'extension Chrome. C'est elle qui lit Leboncoin.
+
+1. Ouvre `chrome://extensions` et active le **mode développeur**.
+2. Clique sur **Charger l'extension non empaquetée**, puis choisis le dossier `extension/`.
+3. Recharge http://localhost:5199.
+
+Sans clé API, l'IA est **simulée** (`MOCK_AI=1`), ce qui suffit pour parcourir l'interface. Pour de vraies
+analyses :
+
+1. Ajoute `OPENAI_API_KEY=sk-...` dans `.dev.vars`.
+2. Supprime la ligne `MOCK_AI=1`.
+3. Relance `npm run dev`.
+
+Pour utiliser Claude à la place, mets `LLM_PROVIDER=claude` et `ANTHROPIC_API_KEY`.
+
+`.dev.vars` est ignoré par git. Aucune clé ne doit apparaître ailleurs.
+
+## Fonctionnement
+
+1. **Préparer** : l'IA se renseigne sur le web. Elle retient des modèles fiables (« Choix retenus »), avec
+   leurs versions, leurs années et des repères de prix, puis écrit les recherches Leboncoin. Tu peux ajouter
+   ou retirer un modèle.
+2. **Récupérer** : l'extension ouvre ces recherches dans *ton* Chrome, à rythme humain. Elle lit ensuite le
+   texte de chaque annonce, une seule fois : les annonces restent en banque pendant 15 jours.
+3. **Analyser** : un petit modèle extrait les faits de chaque annonce (accident, propriétaires, réparations…).
+   L'IA attribue ensuite un verdict et une note. « Analyser le prix » ajuste la courbe du modèle sur les
+   annonces de toute la France.
+
+La liste propose aussi :
+- une carte des annonces ;
+- les favoris et les annonces masquées ;
+- un message pré-rempli pour le vendeur, dans le formulaire Leboncoin ;
+- l'itinéraire depuis ton domicile ;
+- une question libre à l'IA sur une annonce.
+
+**Pourquoi une extension ?** Leboncoin interdit l'aspiration automatique de ses annonces. Le serveur ne le
+contacte donc jamais : c'est ton navigateur qui lit les pages, comme quand tu navigues toi-même. L'outil
+est fait pour un usage personnel et modéré.
+
+## Modèle de prix
+
+Le modèle estime une courbe par modèle de voiture (`src/shared/pricing.ts`) :
+
+```
+ln(prix) = c − α·ln(1 + âge) − β·(ln(1 + km/10 000) − ln(1 + 13 000·âge/10 000))
+```
+
+- **Âge :** la décote suit une loi de puissance. **Kilométrage :** il compte par son écart au kilométrage
+  normal pour l'âge, soit 13 000 km par an.
+- **Avant « Analyser le prix » :** la courbe part des repères de prix fournis par l'IA (α ≈ 0,36, β ≈ 0,25).
+- **Après :** la courbe est ajustée sur les annonces de toute la France (régression robuste de Huber).
+  Les pentes ne sont réajustées qu'à partir de 25 annonces réparties sur au moins 4 années.
+- **Texte de l'annonce :** il corrige l'estimation, par exemple −10 % pour un accident léger et −30 % pour un
+  accident grave. La correction totale reste comprise entre −35 % et +12 %.
+
+## Architecture
+
+TypeScript partout :
+
+```
+src/worker/   API Hono sur Cloudflare Workers, base D1 (SQLite), prompts IA (ai.ts), fournisseurs LLM
+src/client/   application React 19 (Vite) : liste, carte Leaflet, panneau de recherche
+src/shared/   code commun : modèle de prix, estimation, règles Leboncoin, types (zod)
+extension/    extension Chrome MV3 : lit recherches, annonces, profils vendeurs ; remplit le message
+migrations/   schéma SQL de la base D1
+scripts/      setup local
+test/         tests Vitest
+```
+
+En local, `npm run dev` lance Vite, et le plugin Cloudflare exécute le Worker et D1 dans le même processus.
+L'extension dialogue avec la page via `externally_connectable`. Son identifiant est fixe, parce qu'il est
+dérivé de la clé publique déclarée dans le manifest.
+
+## Déployer sur Cloudflare
+
+```bash
 npx wrangler login
-npx wrangler d1 create affaires        # copie le database_id affiché dans wrangler.jsonc
+npx wrangler d1 create labonnepioche      # copie le database_id dans wrangler.jsonc
 npm run db:migrate:remote
-npx wrangler secret put OPENAI_API_KEY   # ou ANTHROPIC_API_KEY avec LLM_PROVIDER=claude
-npx wrangler secret put APP_PASSWORD   # le mot de passe de connexion à l'outil
-npx wrangler secret put SESSION_SECRET # 32 caractères aléatoires ou plus : openssl rand -hex 32
+npx wrangler secret put OPENAI_API_KEY
+npx wrangler secret put APP_PASSWORD      # mot de passe long : pas de limite de tentatives
+npx wrangler secret put SESSION_SECRET    # openssl rand -hex 32
 npm run deploy
 ```
 
-L'adresse affichée (`https://affaires.<ton-compte>.workers.dev`) est ton outil.
+Ensuite, dans `extension/manifest.json`, remplace `https://*.workers.dev/*` par l'adresse exacte de ton
+déploiement, puis recharge l'extension.
 
-Choisis un mot de passe long : la connexion n'a pas de limite de tentatives. Changer `SESSION_SECRET`
-déconnecte toutes les sessions.
+## Commandes
 
-Le plan gratuit des Workers limite le temps de calcul par requête. Si des erreurs 503 apparaissent pendant
-l'analyse, passe au plan Workers Paid (5 $/mois).
+| Commande | Rôle |
+| --- | --- |
+| `npm run dev` | application et API en local |
+| `npm test` | tests |
+| `npm run typecheck` | vérification des types |
+| `npm run db:migrate:local` | applique les nouvelles migrations en local |
 
-## Modèle et coût
-
-`LLM_PROVIDER` dans `wrangler.jsonc` : `openai` (par défaut, modèle `OPENAI_MODEL` = `gpt-5.5`) ou `claude`
-(`CLAUDE_MODEL` = `claude-opus-5-5`). Ordre de grandeur : quelques dizaines de centimes pour préparer une
-recherche (avec recherche web), et environ 1 centime par annonce analysée. Une annonce n'est analysée qu'une
-fois, sauf si son prix ou son texte change.
-
-## Développement local
-
-```bash
-cp .dev.vars.example .dev.vars   # MOCK_AI=1 : réponses d'exemple, sans clé API
-npm run db:migrate:local
-npm run dev
-npm test
-```
-
-## Structure
-
-- `src/worker/` : API (Hono sur Cloudflare Workers), base D1, consignes données à l'IA (`ai.ts`) et
-  fournisseurs (`llm-openai.ts`, `llm-claude.ts`).
-- `src/client/` : application React (liste, carte Leaflet / OpenStreetMap).
-- `src/shared/` : types partagés et construction des URL de recherche Leboncoin.
-- `extension/` : extension Chrome (lecture des pages de résultats Leboncoin).
-- `migrations/` : schéma de la base.
+**Coût indicatif avec gpt-5.5 :** quelques dizaines de centimes pour préparer une recherche, environ 1 centime
+par annonce analysée. Une annonce n'est analysée à nouveau que si son prix ou son texte change.

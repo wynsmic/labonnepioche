@@ -320,7 +320,7 @@ export function HuntPanel({
             run('collect', async () => {
               if (!(await extensionReady())) {
                 setExtOk(false);
-                throw new Error('Extension Affaires introuvable dans ce navigateur (voir les instructions ci-dessous).');
+                throw new Error('Extension La Bonne Pioche introuvable dans ce navigateur (voir les instructions ci-dessous).');
               }
               const searches = plan!.plan.searches.filter((_, i) => selected.has(i));
               // The list becomes what Leboncoin shows now: at the end of a complete collection,
@@ -418,7 +418,7 @@ export function HuntPanel({
 
       {extOk === false && (
         <p className="note warn small">
-          L’extension Chrome « Affaires » n’est pas détectée. Elle lit Leboncoin depuis ton navigateur : installe-la
+          L’extension Chrome « La Bonne Pioche » n’est pas détectée. Elle lit Leboncoin depuis ton navigateur : installe-la
           (dossier <code>extension</code>, voir le README), puis recharge cette page.
         </p>
       )}

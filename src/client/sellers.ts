@@ -22,7 +22,7 @@ export async function checkSeller(briefId: string, ad: StoredAd): Promise<Seller
     if (cached) return cached;
   }
   if (!(await extensionReady())) {
-    throw new Error('Extension Affaires introuvable dans ce navigateur : installe-la ou recharge-la (chrome://extensions).');
+    throw new Error('Extension La Bonne Pioche introuvable dans ce navigateur : installe-la ou recharge-la (chrome://extensions).');
   }
   const message = (reason: string) =>
     reason === 'unknown-message'
@@ -74,7 +74,7 @@ export async function checkStrikingSellers(briefId: string, log: (line: string) 
 export async function readDetails(briefId: string, log: (line: string) => void, alive: () => boolean = () => true): Promise<number> {
   const { ads } = await api.detailsNeeded(briefId);
   if (!ads.length) return 0;
-  if (!(await extensionReady())) throw new Error('Extension Affaires introuvable dans ce navigateur.');
+  if (!(await extensionReady())) throw new Error('Extension La Bonne Pioche introuvable dans ce navigateur.');
   log(`Lecture du détail de ${ads.length} annonce(s) sur Leboncoin (texte du vendeur)…`);
   let pending: { id: string; body: string; sellerId: string | null; sellerName: string | null }[] = [];
   let read = 0;
@@ -125,7 +125,7 @@ export function listingUrl(input: string): string | null {
 export async function addListingByUrl(briefId: string, input: string): Promise<string> {
   const url = listingUrl(input);
   if (!url) throw new Error('Colle le lien d’une annonce Leboncoin (leboncoin.fr/…/123456789…).');
-  if (!(await extensionReady())) throw new Error('Extension Affaires introuvable dans ce navigateur.');
+  if (!(await extensionReady())) throw new Error('Extension La Bonne Pioche introuvable dans ce navigateur.');
   const page = await readDetail(url);
   if (!page.ok) {
     if (page.reason === 'captcha') throw new Error('Leboncoin a demandé une vérification : réessaie dans un moment.');
