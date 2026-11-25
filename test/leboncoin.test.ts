@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { buildSearchUrl, hasRequiredWords, isExcluded, locationsFromUrl, matchesSearch } from '../src/shared/leboncoin';
-import type { Ad } from '../src/shared/types';
-import type { Search } from '../src/shared/types';
+import { buildSearchUrl, hasRequiredWords, isExcluded, locationsFromUrl, matchesSearch } from '../server/domain/leboncoin';
+import type { Ad } from '../contracts/types';
+import type { Search } from '../contracts/types';
 
 const search: Search = {
   label: 'Yaris',

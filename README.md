@@ -57,7 +57,7 @@ est fait pour un usage personnel et modéré.
 
 ## Modèle de prix
 
-Le modèle estime une courbe par modèle de voiture (`src/shared/pricing.ts`) :
+Le modèle estime une courbe par modèle de voiture (`server/domain/pricing.ts`) :
 
 ```
 ln(prix) = c − α·ln(1 + âge) − β·(ln(1 + km/10 000) − ln(1 + 13 000·âge/10 000))
@@ -73,17 +73,25 @@ ln(prix) = c − α·ln(1 + âge) − β·(ln(1 + km/10 000) − ln(1 + 13 000·
 
 ## Architecture
 
-TypeScript partout :
+TypeScript partout. Le backend calcule et décide, le front affiche.
 
 ```
-src/worker/   API Hono sur Cloudflare Workers, base D1 (SQLite), prompts IA (ai.ts), fournisseurs LLM
-src/client/   application React 19 (Vite) : liste, carte Leaflet, panneau de recherche
-src/shared/   code commun : modèle de prix, estimation, règles Leboncoin, types (zod)
+server/       API Hono sur Cloudflare Workers : routes, base D1 (SQLite), IA (ai.ts, llm-*.ts)
+server/domain/  règles métier pures : modèle de prix, estimation, comparables, règles Leboncoin,
+              message au vendeur, et view.ts qui prépare chaque annonce pour l'affichage
+web/          application React 19 (Vite) : affiche ce que l'API renvoie, pilote l'extension
+contracts/    contrat de l'API : types et schémas zod, sans aucune logique
 extension/    extension Chrome MV3 : lit recherches, annonces, profils vendeurs ; remplit le message
 migrations/   schéma SQL de la base D1
-scripts/      setup local
-test/         tests Vitest
+test/         tests Vitest (règles métier, vue des annonces, frontières entre dossiers)
 ```
+
+- `GET /api/briefs/:id` renvoie chaque annonce avec un champ `view` calculé par le serveur : verdict,
+  prix attendu et écart, couleur, caractéristiques, mémo du modèle, filtres, message au vendeur, liens.
+- Le serveur donne aussi les pages Leboncoin à faire lire par l'extension : le front ne construit
+  aucune URL de recherche.
+- `server/` et `web/` ont chacun leur configuration TypeScript (`tsconfig.server.json`,
+  `tsconfig.web.json`) et ne partagent que `contracts/`. Un test échoue si `web/` importe du code serveur.
 
 En local, `npm run dev` lance Vite, et le plugin Cloudflare exécute le Worker et D1 dans le même processus.
 L'extension dialogue avec la page via `externally_connectable`. Son identifiant est fixe, parce qu'il est

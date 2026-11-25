@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { keyFacts, pickOf, trimOf } from '../src/shared/models';
-import { hasRequiredWords } from '../src/shared/leboncoin';
-import type { Ad, Plan } from '../src/shared/types';
+import { keyFacts, pickOf, trimOf } from '../server/domain/models';
+import { hasRequiredWords } from '../server/domain/leboncoin';
+import type { Ad, Plan } from '../contracts/types';
 
 const ad = (over: Partial<Ad & { searchLabel: string | null }> = {}): Ad & { searchLabel: string | null } => ({
   id: '1',

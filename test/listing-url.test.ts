@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { listingUrl } from '../src/client/sellers';
+import { listingUrl } from '../server/domain/leboncoin';
 
 it('reads the listing page from any Leboncoin link', () => {
   expect(listingUrl('https://www.leboncoin.fr/ad/voitures/3313786723')).toBe('https://www.leboncoin.fr/ad/voitures/3313786723');

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { curveKey, estimateOf } from '../src/shared/estimate';
-import type { Facts } from '../src/shared/facts';
-import { predict, type PriceCurve } from '../src/shared/pricing';
-import type { Ad } from '../src/shared/types';
+import { curveKey, estimateOf } from '../server/domain/estimate';
+import type { Facts } from '../server/domain/facts';
+import { predict, type PriceCurve } from '../server/domain/pricing';
+import type { Ad } from '../contracts/types';
 
 const now = Date.UTC(2026, 10, 23);
 const ad = (price: number, regdate: string, mileage: string): Ad => ({

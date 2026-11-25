@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assessSeller, parseMemberSince } from '../src/shared/seller';
+import { assessSeller, parseMemberSince } from '../server/domain/seller';
 
 const NOW = Date.UTC(2026, 10, 22);
 const car = (title: string) => ({ title, price: 15000, category: 'Voitures', date: null });

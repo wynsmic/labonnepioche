@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PRIOR, ageFrom, curveFromPoints, describeCurve, fitMarket, implausibleKm, predict, project, type PriceCurve, type Point } from '../src/shared/pricing';
+import { PRIOR, ageFrom, curveFromPoints, describeCurve, fitMarket, implausibleKm, predict, project, type PriceCurve, type Point } from '../server/domain/pricing';
 
 const truth: PriceCurve = { c: Math.log(32_000), alpha: 0.45, beta: 0.32, spread: 0.1, source: 'marche', n: 0, slopes: 'donnees' };
 

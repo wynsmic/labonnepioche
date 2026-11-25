@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { sellerMessage } from '../src/shared/message';
-import type { Facts } from '../src/shared/facts';
-import type { SellerCheck } from '../src/shared/seller';
-import type { StoredAd } from '../src/shared/types';
+import { sellerMessage } from '../server/domain/message';
+import type { Facts } from '../server/domain/facts';
+import type { SellerCheck } from '../server/domain/seller';
+import type { StoredAd } from '../contracts/types';
 
 const ad = (body: string, questions: string[] = [], extra: Partial<StoredAd> = {}): StoredAd =>
   ({

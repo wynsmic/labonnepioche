@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseZone, toLocationsParam } from '../src/shared/zone';
+import { parseZone, toLocationsParam } from '../server/domain/zone';
 
 describe('parseZone', () => {
   it('splits places and reads optional radii', () => {

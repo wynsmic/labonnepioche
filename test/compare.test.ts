@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ageInDays, comparables, compare, comparableQuery, engineOf, numberFrom } from '../src/shared/compare';
-import type { Ad } from '../src/shared/types';
+import { ageInDays, comparables, compare, comparableQuery, engineOf, numberFrom } from '../server/domain/compare';
+import type { Ad } from '../contracts/types';
 
 const ad = (id: string, price: number | null, attrs: Record<string, string> = {}, title = 'Toyota Yaris'): Ad => ({
   id,

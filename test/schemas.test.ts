@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { zodTextFormat } from 'openai/helpers/zod';
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
-import { AnalysesSchema, PlanSchema } from '../src/shared/types';
+import { AnalysesSchema, PlanSchema } from '../contracts/types';
 
 // Both providers must accept our schemas as strict JSON schemas.
 describe.each([
